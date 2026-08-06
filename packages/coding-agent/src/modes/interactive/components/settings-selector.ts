@@ -321,6 +321,9 @@ class ThemeSubmenu extends Container {
 		if (this.mode === "automatic") {
 			this.showAutomaticMenu();
 		} else {
+			if (this.themeOverride !== undefined && this.resolvedThemeOverride !== this.singleTheme) {
+				this.callbacks.onThemePreview?.(this.singleTheme);
+			}
 			this.showSingleMenu();
 		}
 	}

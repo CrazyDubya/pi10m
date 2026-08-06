@@ -16,7 +16,7 @@ describe("SettingsSelectorComponent", () => {
 	});
 
 	describe("theme override", () => {
-		function openThemeSettings(currentTheme: string, themeOverride: string) {
+		function openThemeSettings(currentTheme: string, themeOverride?: string) {
 			const onThemePreview = vi.fn();
 			const selector = new SettingsSelectorComponent(
 				{
@@ -36,6 +36,19 @@ describe("SettingsSelectorComponent", () => {
 			settingsList.handleInput("\r");
 			return { settingsList, onThemePreview };
 		}
+
+		it("previews the saved theme when it differs from the override", () => {
+			const { onThemePreview } = openThemeSettings("light", "dayowl");
+
+			expect(onThemePreview).toHaveBeenCalledOnce();
+			expect(onThemePreview).toHaveBeenCalledWith("light");
+		});
+
+		it("does not reapply the saved theme without an override", () => {
+			const { onThemePreview } = openThemeSettings("light");
+
+			expect(onThemePreview).not.toHaveBeenCalled();
+		});
 
 		it("marks the light side of a paired override", () => {
 			const { settingsList } = openThemeSettings("light/dark", "dayowl/nightowl");
@@ -73,6 +86,8 @@ describe("SettingsSelectorComponent", () => {
 
 		it("restores a single-theme override after canceling a direct preview", () => {
 			const { settingsList, onThemePreview } = openThemeSettings("light", "dayowl");
+
+			onThemePreview.mockClear();
 
 			settingsList.handleInput("\x1b[B");
 			settingsList.handleInput("\x1b");
