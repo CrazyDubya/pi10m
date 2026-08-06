@@ -16,7 +16,7 @@ describe("SettingsSelectorComponent", () => {
 	});
 
 	describe("theme override", () => {
-		function openThemeSettings(currentTheme: string, themeOverride?: string) {
+		function focusThemeSetting(currentTheme: string, themeOverride?: string) {
 			const onThemePreview = vi.fn();
 			const selector = new SettingsSelectorComponent(
 				{
@@ -33,9 +33,22 @@ describe("SettingsSelectorComponent", () => {
 			const settingsList = selector.getSettingsList();
 
 			for (const character of "Theme") settingsList.handleInput(character);
-			settingsList.handleInput("\r");
 			return { settingsList, onThemePreview };
 		}
+
+		function openThemeSettings(currentTheme: string, themeOverride?: string) {
+			const result = focusThemeSetting(currentTheme, themeOverride);
+			result.settingsList.handleInput("\r");
+			return result;
+		}
+
+		it("describes the active theme override", () => {
+			const { settingsList } = focusThemeSetting("light/dark", "dayowl/nightowl");
+
+			expect(stripAnsi(settingsList.render(120).join("\n"))).toContain(
+				"Color theme for the interface. Active override: dayowl/nightowl",
+			);
+		});
 
 		it("previews the saved theme when it differs from the override", () => {
 			const { onThemePreview } = openThemeSettings("light", "dayowl");

@@ -650,7 +650,9 @@ export class SettingsSelectorComponent extends Container {
 			{
 				id: "theme",
 				label: "Theme",
-				description: "Color theme for the interface",
+				description: `Color theme for the interface${
+					config.themeOverride ? `. Active override: ${config.themeOverride}` : ""
+				}`,
 				currentValue: config.currentTheme,
 				submenu: (currentValue, done) =>
 					new ThemeSubmenu(
