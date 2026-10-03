@@ -39,6 +39,7 @@ export interface TerminalSettings {
 	showImages?: boolean; // default: true (only relevant if terminal supports images)
 	imageWidthCells?: number; // default: 60 (preferred inline image width in terminal cells)
 	clearOnShrink?: boolean; // default: false (clear empty rows when content shrinks)
+	limitedRepaint?: number; // max rows emitted during full repaints; default: unlimited
 	showTerminalProgress?: boolean; // default: false (OSC 9;4 terminal progress indicators)
 }
 
@@ -1109,6 +1110,24 @@ export class SettingsManager {
 		}
 		this.globalSettings.terminal.clearOnShrink = enabled;
 		this.markModified("terminal", "clearOnShrink");
+		this.save();
+	}
+
+	getLimitedRepaint(): number | undefined {
+		const maxLines = this.settings.terminal?.limitedRepaint;
+		if (typeof maxLines !== "number" || !Number.isFinite(maxLines) || maxLines <= 0) {
+			return undefined;
+		}
+		return Math.floor(maxLines);
+	}
+
+	setLimitedRepaint(maxLines: number | undefined): void {
+		if (!this.globalSettings.terminal) {
+			this.globalSettings.terminal = {};
+		}
+		this.globalSettings.terminal.limitedRepaint =
+			maxLines === undefined || !Number.isFinite(maxLines) || maxLines <= 0 ? undefined : Math.floor(maxLines);
+		this.markModified("terminal", "limitedRepaint");
 		this.save();
 	}
 

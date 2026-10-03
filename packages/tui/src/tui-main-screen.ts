@@ -51,6 +51,7 @@ export interface TuiMainScreenRenderState {
 	hardwareCursorRow: number;
 	maxLinesRendered: number;
 	previousViewportTop: number;
+	renderedBufferStart?: number;
 }
 
 /** TUI implementation that renders into the terminal's main screen and scrollback. */
@@ -64,6 +65,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 	private hardwareCursorRow = 0;
 	private maxLinesRendered = 0;
 	private previousViewportTop = 0;
+	private renderedBufferStart = 0; // First logical line retained after the last full repaint
 
 	captureRenderState(): TuiMainScreenRenderState {
 		return {
@@ -74,6 +76,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 			hardwareCursorRow: this.hardwareCursorRow,
 			maxLinesRendered: this.maxLinesRendered,
 			previousViewportTop: this.previousViewportTop,
+			renderedBufferStart: this.renderedBufferStart,
 		};
 	}
 
@@ -86,6 +89,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		this.hardwareCursorRow = state.hardwareCursorRow;
 		this.maxLinesRendered = state.maxLinesRendered;
 		this.previousViewportTop = state.previousViewportTop;
+		this.renderedBufferStart = state.renderedBufferStart ?? 0;
 	}
 
 	protected override resetRenderState(): void {
@@ -96,6 +100,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		this.hardwareCursorRow = 0;
 		this.maxLinesRendered = 0;
 		this.previousViewportTop = 0;
+		this.renderedBufferStart = 0;
 	}
 
 	protected override beforeTerminalStop(options: TuiStopOptions): void {
@@ -106,6 +111,21 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		if (lineDiff > 0) this.terminal.write(`\x1b[${lineDiff}B`);
 		else if (lineDiff < 0) this.terminal.write(`\x1b[${-lineDiff}A`);
 		this.terminal.write("\r\n");
+	}
+
+	private getLimitedRepaintStart(lines: string[], height: number): number {
+		if (this.getLimitedRepaint() === undefined) return 0;
+
+		let start = Math.max(0, lines.length - Math.max(height, this.getLimitedRepaint()!));
+		for (let i = 0; i < start; i++) {
+			if (!isImageLine(lines[i] ?? "") || extractKittyImageRows(lines[i] ?? "") <= 1) continue;
+			const blockEnd = i + this.getKittyImageReservedRows(lines, i) - 1;
+			if (blockEnd >= start) {
+				start = i;
+				break;
+			}
+		}
+		return start;
 	}
 
 	private collectKittyImageIds(lines: string[]): Set<number> {
@@ -209,13 +229,14 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		// Helper to clear scrollback and viewport and render all new lines
 		const fullRender = (clear: boolean): void => {
 			this.fullRedrawCount += 1;
+			const renderStart = clear ? this.getLimitedRepaintStart(newLines, height) : 0;
 			let buffer = "\x1b[?2026h"; // Begin synchronized output
 			if (clear) {
 				buffer += this.deleteKittyImages(this.previousKittyImageIds);
 				buffer += "\x1b[2J\x1b[H\x1b[3J"; // Clear screen, home, then clear scrollback
 			}
-			for (let i = 0; i < newLines.length; i++) {
-				if (i > 0) buffer += "\r\n";
+			for (let i = renderStart; i < newLines.length; i++) {
+				if (i > renderStart) buffer += "\r\n";
 				const line = newLines[i];
 				const isImage = isImageLine(line);
 				const imageReservedRows = isImage ? this.getKittyImageReservedRows(newLines, i) : 1;
@@ -245,7 +266,8 @@ export class TuiMainScreen extends TuiBase implements TUI {
 			this.previousViewportTop = Math.max(0, bufferLength - height);
 			this.positionHardwareCursor(cursorPos, newLines.length);
 			this.previousLines = newLines;
-			this.previousKittyImageIds = this.collectKittyImageIds(newLines);
+			this.previousKittyImageIds = this.collectKittyImageIds(newLines.slice(renderStart));
+			this.renderedBufferStart = renderStart;
 			this.previousWidth = width;
 			this.previousHeight = height;
 		};
@@ -275,8 +297,16 @@ export class TuiMainScreen extends TuiBase implements TUI {
 
 		// Height changes normally need a full re-render to keep the visible viewport aligned,
 		// but Termux changes height when the software keyboard shows or hides.
-		// In that environment, a full redraw causes the entire history to replay on every toggle.
-		if (heightChanged && !isTermuxSession()) {
+		// In that environment, only repaint if a larger viewport would expose history omitted
+		// by a previous limited repaint.
+		const retainedBufferLines = this.previousLines.length - this.renderedBufferStart;
+		const termuxNeedsRepaint =
+			isTermuxSession() &&
+			heightChanged &&
+			height > this.previousHeight &&
+			this.renderedBufferStart > 0 &&
+			height > retainedBufferLines;
+		if (heightChanged && (!isTermuxSession() || termuxNeedsRepaint)) {
 			logRedraw(`terminal height changed (${this.previousHeight} -> ${height})`);
 			fullRender(true);
 			return;
@@ -370,7 +400,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 			}
 			this.positionHardwareCursor(cursorPos, newLines.length);
 			this.previousLines = newLines;
-			this.previousKittyImageIds = this.collectKittyImageIds(newLines);
+			this.previousKittyImageIds = this.collectKittyImageIds(newLines.slice(this.renderedBufferStart));
 			this.previousWidth = width;
 			this.previousHeight = height;
 			this.previousViewportTop = prevViewportTop;
@@ -541,7 +571,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		this.positionHardwareCursor(cursorPos, newLines.length);
 
 		this.previousLines = newLines;
-		this.previousKittyImageIds = this.collectKittyImageIds(newLines);
+		this.previousKittyImageIds = this.collectKittyImageIds(newLines.slice(this.renderedBufferStart));
 		this.previousWidth = width;
 		this.previousHeight = height;
 	}

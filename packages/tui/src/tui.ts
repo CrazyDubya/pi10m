@@ -301,6 +301,8 @@ export interface TUI extends Component {
 	setShowHardwareCursor(enabled: boolean): void;
 	getClearOnShrink(): boolean;
 	setClearOnShrink(enabled: boolean): void;
+	getLimitedRepaint(): number | undefined;
+	setLimitedRepaint(maxLines: number | undefined): void;
 	setFocus(component: Component | null): void;
 	showOverlay(component: Component, options?: OverlayOptions): OverlayHandle;
 	hideOverlay(): void;
@@ -343,6 +345,7 @@ export abstract class TuiBase extends Container implements TUI {
 	private static readonly MIN_RENDER_INTERVAL_MS = 16;
 	private showHardwareCursor = process.env.PI_HARDWARE_CURSOR === "1";
 	private clearOnShrink = process.env.PI_CLEAR_ON_SHRINK === "1";
+	private limitedRepaint: number | undefined;
 	protected fullRedrawCount = 0;
 	protected stopped = false;
 	private pendingOsc11BackgroundReplies = 0;
@@ -409,6 +412,19 @@ export abstract class TuiBase extends Container implements TUI {
 	 */
 	setClearOnShrink(enabled: boolean): void {
 		this.clearOnShrink = enabled;
+	}
+
+	getLimitedRepaint(): number | undefined {
+		return this.limitedRepaint;
+	}
+
+	/**
+	 * Limit full repaints to the most recent number of rendered rows.
+	 * The visible viewport is always repainted in full, and differential appends remain unbounded.
+	 */
+	setLimitedRepaint(maxLines: number | undefined): void {
+		this.limitedRepaint =
+			maxLines === undefined || !Number.isFinite(maxLines) || maxLines <= 0 ? undefined : Math.floor(maxLines);
 	}
 
 	getFocusedComponent(): Component | null {

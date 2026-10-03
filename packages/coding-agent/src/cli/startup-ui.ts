@@ -81,6 +81,7 @@ export async function createStartupTui(settingsManager: SettingsManager): Promis
 	setKeybindings(KeybindingsManager.create());
 	const ui: TUI = new TuiMainScreen(new ProcessTerminal(), settingsManager.getShowHardwareCursor(), getAgentDir());
 	ui.setClearOnShrink(settingsManager.getClearOnShrink());
+	ui.setLimitedRepaint(settingsManager.getLimitedRepaint());
 	return ui;
 }
 
