@@ -15,6 +15,10 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
+		"./schemas": {
+			"types": "./dist/schemas.d.ts",
+			"import": "./dist/schemas.js"
+		},
 		"./compat": {
 			"types": "./dist/compat.d.ts",
 			"import": "./dist/compat.js"
