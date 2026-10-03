@@ -3,9 +3,13 @@ import {
 	checkForNewPiVersion,
 	comparePackageVersions,
 	formatVersionCheckError,
+	getLatestPiNodeRequirementMessage,
 	getLatestPiRelease,
 	getLatestPiVersion,
+	isCurrentNodeVersionSupportedByLatestPi,
 	isNewerPackageVersion,
+	isNodeVersionAtLeast,
+	MINIMUM_NODE_VERSION_FOR_LATEST_PI,
 } from "../src/utils/version-check.ts";
 import { allowNetwork } from "./test-network-env.ts";
 
@@ -32,6 +36,17 @@ describe("version checks", () => {
 		expect(comparePackageVersions("5.0.0-beta.20", "5.0.0-beta.9")).toBeGreaterThan(0);
 		expect(isNewerPackageVersion("0.70.5", "0.70.5")).toBe(false);
 		expect(isNewerPackageVersion("0.70.6", "0.70.5")).toBe(true);
+	});
+
+	it("checks the Node version required by current pi releases", () => {
+		expect(MINIMUM_NODE_VERSION_FOR_LATEST_PI).toBe("22.19.0");
+		expect(isNodeVersionAtLeast("20.19.4", MINIMUM_NODE_VERSION_FOR_LATEST_PI)).toBe(false);
+		expect(isNodeVersionAtLeast("22.19.0", MINIMUM_NODE_VERSION_FOR_LATEST_PI)).toBe(true);
+		expect(isNodeVersionAtLeast("23.0.0", MINIMUM_NODE_VERSION_FOR_LATEST_PI)).toBe(true);
+		expect(getLatestPiNodeRequirementMessage("pi update")).toContain("Node >= 22.19.0");
+		expect(isCurrentNodeVersionSupportedByLatestPi()).toBe(
+			isNodeVersionAtLeast(process.versions.node, MINIMUM_NODE_VERSION_FOR_LATEST_PI),
+		);
 	});
 
 	it("returns only newer versions", async () => {

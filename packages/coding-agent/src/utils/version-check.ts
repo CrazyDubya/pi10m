@@ -48,6 +48,24 @@ export function isNewerPackageVersion(candidateVersion: string, currentVersion: 
 	return candidateVersion.trim() !== currentVersion.trim();
 }
 
+export const MINIMUM_NODE_VERSION_FOR_LATEST_PI = "22.19.0";
+
+export function isNodeVersionAtLeast(version: string, minimumVersion: string): boolean {
+	const comparison = comparePackageVersions(version, minimumVersion);
+	if (comparison === undefined) {
+		return false;
+	}
+	return comparison >= 0;
+}
+
+export function isCurrentNodeVersionSupportedByLatestPi(): boolean {
+	return isNodeVersionAtLeast(process.versions.node, MINIMUM_NODE_VERSION_FOR_LATEST_PI);
+}
+
+export function getLatestPiNodeRequirementMessage(updateCommand: string): string {
+	return `Pi 0.75.0 and newer require Node >= ${MINIMUM_NODE_VERSION_FOR_LATEST_PI}. Current Node is ${process.version}. Update Node, then run ${updateCommand} again.`;
+}
+
 export async function getLatestPiRelease(
 	currentVersion: string,
 	options: { timeoutMs?: number; retry?: boolean } = {},

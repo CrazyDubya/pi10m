@@ -25,7 +25,13 @@ import { DefaultResourceLoader } from "./core/resource-loader.ts";
 import { SettingsManager } from "./core/settings-manager.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
 import { spawnProcess } from "./utils/child-process.ts";
-import { formatVersionCheckError, getLatestPiRelease, isNewerPackageVersion } from "./utils/version-check.ts";
+import {
+	formatVersionCheckError,
+	getLatestPiNodeRequirementMessage,
+	getLatestPiRelease,
+	isCurrentNodeVersionSupportedByLatestPi,
+	isNewerPackageVersion,
+} from "./utils/version-check.ts";
 import {
 	cleanupWindowsSelfUpdateQuarantine,
 	quarantineWindowsNativeDependencies,
@@ -850,6 +856,11 @@ export async function handlePackageCommand(
 				if (updateTargetIncludesSelf(target)) {
 					const selfUpdatePlan = await getSelfUpdatePlan(options.force);
 					if (!selfUpdatePlan.shouldRun) {
+						return true;
+					}
+					if (!isCurrentNodeVersionSupportedByLatestPi()) {
+						console.error(chalk.yellow(getLatestPiNodeRequirementMessage(`${APP_NAME} update --self`)));
+						process.exitCode = 1;
 						return true;
 					}
 					const installMethod = detectInstallMethod();
