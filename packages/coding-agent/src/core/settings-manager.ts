@@ -1,6 +1,6 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Transport } from "@earendil-works/pi-ai";
-import type { TuiMode as RendererTuiMode, ScrollViewScrollbar } from "@earendil-works/pi-tui";
+import type { HardwareCursorSetting, TuiMode as RendererTuiMode, ScrollViewScrollbar } from "@earendil-works/pi-tui";
 import { randomUUID } from "crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
@@ -126,7 +126,7 @@ export interface Settings {
 	editorPaddingX?: number; // Horizontal padding for input editor (default: 0)
 	outputPad?: 0 | 1; // Horizontal padding for chat message output (default: 1)
 	autocompleteMaxVisible?: number; // Max visible items in autocomplete dropdown (default: 5)
-	showHardwareCursor?: boolean; // Show terminal cursor while still positioning it for IME
+	showHardwareCursor?: HardwareCursorSetting; // boolean keeps both cursors; "native" shows only the hardware cursor
 	markdown?: MarkdownSettings;
 	warnings?: WarningSettings;
 	sessionDir?: string; // Custom session storage directory (same format as --session-dir CLI flag)
@@ -1223,12 +1223,14 @@ export class SettingsManager {
 		this.save();
 	}
 
-	getShowHardwareCursor(): boolean {
-		return this.settings.showHardwareCursor ?? process.env.PI_HARDWARE_CURSOR === "1";
+	getShowHardwareCursor(): HardwareCursorSetting {
+		const setting = this.settings.showHardwareCursor;
+		if (setting === true || setting === false || setting === "native") return setting;
+		return process.env.PI_HARDWARE_CURSOR === "native" ? "native" : process.env.PI_HARDWARE_CURSOR === "1";
 	}
 
-	setShowHardwareCursor(enabled: boolean): void {
-		this.globalSettings.showHardwareCursor = enabled;
+	setShowHardwareCursor(setting: HardwareCursorSetting): void {
+		this.globalSettings.showHardwareCursor = setting;
 		this.markModified("showHardwareCursor");
 		this.save();
 	}

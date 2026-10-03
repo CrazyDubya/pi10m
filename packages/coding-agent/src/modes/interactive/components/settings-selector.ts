@@ -1,5 +1,6 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Transport } from "@earendil-works/pi-ai";
+import type { HardwareCursorSetting } from "@earendil-works/pi-tui";
 import {
 	type Component,
 	Container,
@@ -80,7 +81,7 @@ export interface SettingsConfig {
 	enableInstallTelemetry: boolean;
 	doubleEscapeAction: "fork" | "tree" | "none";
 	treeFilterMode: "default" | "no-tools" | "user-only" | "labeled-only" | "all";
-	showHardwareCursor: boolean;
+	showHardwareCursor: HardwareCursorSetting;
 	editorPaddingX: number;
 	outputPad: 0 | 1;
 	autocompleteMaxVisible: number;
@@ -114,7 +115,7 @@ export interface SettingsCallbacks {
 	onEnableInstallTelemetryChange: (enabled: boolean) => void;
 	onDoubleEscapeActionChange: (action: "fork" | "tree" | "none") => void;
 	onTreeFilterModeChange: (mode: "default" | "no-tools" | "user-only" | "labeled-only" | "all") => void;
-	onShowHardwareCursorChange: (enabled: boolean) => void;
+	onShowHardwareCursorChange: (setting: HardwareCursorSetting) => void;
 	onEditorPaddingXChange: (padding: number) => void;
 	onOutputPadChange: (padding: 0 | 1) => void;
 	onAutocompleteMaxVisibleChange: (maxVisible: number) => void;
@@ -719,9 +720,9 @@ export class SettingsSelectorComponent extends Container {
 		items.splice(skillCommandsIndex + 1, 0, {
 			id: "show-hardware-cursor",
 			label: "Show hardware cursor",
-			description: "Show the terminal cursor while still positioning it for IME support",
-			currentValue: config.showHardwareCursor ? "true" : "false",
-			values: ["true", "false"],
+			description: "Show the terminal cursor. native hides pi's software cursor",
+			currentValue: config.showHardwareCursor === "native" ? "native" : config.showHardwareCursor ? "true" : "false",
+			values: ["false", "true", "native"],
 		});
 
 		// Editor padding toggle (insert after show-hardware-cursor)
@@ -851,7 +852,7 @@ export class SettingsSelectorComponent extends Container {
 						);
 						break;
 					case "show-hardware-cursor":
-						callbacks.onShowHardwareCursorChange(newValue === "true");
+						callbacks.onShowHardwareCursorChange(newValue === "native" ? "native" : newValue === "true");
 						break;
 					case "editor-padding":
 						callbacks.onEditorPaddingXChange(parseInt(newValue, 10));

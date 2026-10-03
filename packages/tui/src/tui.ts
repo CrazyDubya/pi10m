@@ -78,6 +78,40 @@ export function isFocusable(component: Component | null): component is Component
  */
 export const CURSOR_MARKER = "\x1b_pi:c\x07";
 
+/** Hardware cursor off, on, or native (hardware cursor without pi's reverse-video cursor). */
+export type HardwareCursorSetting = boolean | "native";
+
+const REVERSE_VIDEO_ON = "\x1b[7m";
+const SGR_RESET = "\x1b[0m";
+const CURSOR_CELL_RESET = /\x1b\[(?:27|0)m/;
+
+export function stripCursorMarker(line: string, stripSoftwareCursor: boolean): string {
+	const markerIndex = line.indexOf(CURSOR_MARKER);
+	if (markerIndex === -1) return line;
+
+	const beforeMarker = line.slice(0, markerIndex);
+	let afterMarker = line.slice(markerIndex + CURSOR_MARKER.length);
+
+	if (stripSoftwareCursor && afterMarker.startsWith(REVERSE_VIDEO_ON)) {
+		const afterReverseOn = afterMarker.slice(REVERSE_VIDEO_ON.length);
+		const reset = CURSOR_CELL_RESET.exec(afterReverseOn);
+		if (reset) {
+			const cursorCell = afterReverseOn.slice(0, reset.index);
+			const afterReset = afterReverseOn.slice(reset.index + reset[0].length);
+			const preservedReset = reset[0] === SGR_RESET ? SGR_RESET : "";
+			afterMarker = cursorCell + preservedReset + afterReset;
+		} else {
+			afterMarker = afterReverseOn;
+		}
+	}
+
+	return beforeMarker + afterMarker;
+}
+
+function hardwareCursorFromEnv(): HardwareCursorSetting {
+	return process.env.PI_HARDWARE_CURSOR === "native" ? "native" : process.env.PI_HARDWARE_CURSOR === "1";
+}
+
 export { visibleWidth };
 
 /**
@@ -297,8 +331,8 @@ export interface TUI extends Component {
 	addChild(component: Component): void;
 	removeChild(component: Component): void;
 	clear(): void;
-	getShowHardwareCursor(): boolean;
-	setShowHardwareCursor(enabled: boolean): void;
+	getShowHardwareCursor(): HardwareCursorSetting;
+	setShowHardwareCursor(setting: HardwareCursorSetting): void;
 	getClearOnShrink(): boolean;
 	setClearOnShrink(enabled: boolean): void;
 	getLimitedRepaint(): number | undefined;
@@ -343,7 +377,7 @@ export abstract class TuiBase extends Container implements TUI {
 	private renderTimer: NodeJS.Timeout | undefined;
 	private lastRenderAt = 0;
 	private static readonly MIN_RENDER_INTERVAL_MS = 16;
-	private showHardwareCursor = process.env.PI_HARDWARE_CURSOR === "1";
+	private showHardwareCursor: HardwareCursorSetting = hardwareCursorFromEnv();
 	private clearOnShrink = process.env.PI_CLEAR_ON_SHRINK === "1";
 	private limitedRepaint: number | undefined;
 	protected fullRedrawCount = 0;
@@ -363,7 +397,7 @@ export abstract class TuiBase extends Container implements TUI {
 	}
 	private overlayFocusRestore: OverlayFocusRestoreState = { status: "inactive" };
 
-	constructor(terminal: Terminal, showHardwareCursor?: boolean, logDirectory?: string) {
+	constructor(terminal: Terminal, showHardwareCursor?: HardwareCursorSetting, logDirectory?: string) {
 		super();
 		this.terminal = terminal;
 		this.logDirectory = logDirectory ?? process.env.PI_CODING_AGENT_DIR ?? path.join(os.homedir(), ".pi", "agent");
@@ -388,14 +422,14 @@ export abstract class TuiBase extends Container implements TUI {
 		return this.fullRedrawCount;
 	}
 
-	getShowHardwareCursor(): boolean {
+	getShowHardwareCursor(): HardwareCursorSetting {
 		return this.showHardwareCursor;
 	}
 
-	setShowHardwareCursor(enabled: boolean): void {
-		if (this.showHardwareCursor === enabled) return;
-		this.showHardwareCursor = enabled;
-		if (!enabled) {
+	setShowHardwareCursor(setting: HardwareCursorSetting): void {
+		if (this.showHardwareCursor === setting) return;
+		this.showHardwareCursor = setting;
+		if (setting === false) {
 			this.terminal.hideCursor();
 		}
 		this.requestRender();
@@ -1206,8 +1240,8 @@ export abstract class TuiBase extends Container implements TUI {
 				const beforeMarker = line.slice(0, markerIndex);
 				const col = visibleWidth(beforeMarker);
 
-				// Strip marker from the line
-				lines[row] = line.slice(0, markerIndex) + line.slice(markerIndex + CURSOR_MARKER.length);
+				// Native mode keeps the hardware cursor and drops the reverse-video software cursor.
+				lines[row] = stripCursorMarker(line, this.getShowHardwareCursor() === "native");
 
 				return { row, col };
 			}

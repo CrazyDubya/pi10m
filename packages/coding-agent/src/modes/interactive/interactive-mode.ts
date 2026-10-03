@@ -14,6 +14,7 @@ import type {
 	AutocompleteItem,
 	AutocompleteProvider,
 	EditorComponent,
+	HardwareCursorSetting,
 	Keybinding,
 	KeyId,
 	MarkdownTheme,
@@ -341,7 +342,7 @@ export interface InteractiveModeOptions {
 
 interface InteractiveTuiOptions {
 	tuiMode: TuiMode;
-	showHardwareCursor: boolean;
+	showHardwareCursor: HardwareCursorSetting;
 	logDirectory: string;
 	terminal?: Terminal;
 	onRightClickPaste?: () => void;
