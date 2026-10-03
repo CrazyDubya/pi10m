@@ -152,6 +152,7 @@ import {
 	type StatusIndicator,
 	WorkingStatusIndicator,
 } from "./components/status-indicator.ts";
+import { ThemeSelectorComponent } from "./components/theme-selector.ts";
 import { ToolExecutionComponent } from "./components/tool-execution.ts";
 import { ToolGroupComponent } from "./components/tool-group.ts";
 import { TreeSelectorComponent } from "./components/tree-selector.ts";
@@ -999,6 +1000,7 @@ export class InteractiveMode {
 
 		// Initialize available provider count for footer display
 		await this.updateAvailableProviderCount();
+		await this.maybeChooseFirstRunTheme();
 		await this.maybeRestoreSavedLoadout();
 	}
 
@@ -5801,6 +5803,34 @@ export class InteractiveMode {
 
 	private getLoadoutRestoreDecisionKey(): string {
 		return this.sessionManager.getSessionFile() ?? this.sessionManager.getSessionId();
+	}
+
+	private maybeChooseFirstRunTheme(): Promise<void> {
+		if (this.settingsManager.getTheme()) return Promise.resolve();
+		const detected = this.themeController.getTerminalTheme() === "light" ? "light" : "dark";
+		return new Promise((resolve) => {
+			this.showSelector((done) => {
+				const finish = () => {
+					done();
+					resolve();
+				};
+				const selector = new ThemeSelectorComponent(
+					detected,
+					(themeName) => {
+						this.settingsManager.setTheme(themeName);
+						this.themeController.setThemeName(themeName, true);
+						this.showStatus(`Theme: ${themeName}`);
+						finish();
+					},
+					() => {
+						this.themeController.preview(detected);
+						finish();
+					},
+					(themeName) => this.themeController.preview(themeName),
+				);
+				return { component: selector, focus: selector.getSelectList() };
+			});
+		});
 	}
 
 	private async maybeRestoreSavedLoadout(): Promise<void> {
