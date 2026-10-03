@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, it, test } from "node:test";
@@ -111,6 +111,38 @@ describe("CombinedAutocompleteProvider", () => {
 			if (result) {
 				assert.strictEqual(result.prefix, "/", "Prefix should be '/'");
 			}
+		});
+	});
+
+	describe("@ prefix extraction", () => {
+		let rootDir = "";
+		let baseDir = "";
+		let fakeFdPath = "";
+
+		beforeEach(() => {
+			rootDir = mkdtempSync(join(tmpdir(), "pi-autocomplete-at-"));
+			baseDir = join(rootDir, "cwd");
+			mkdirSync(baseDir, { recursive: true });
+			fakeFdPath = join(rootDir, "fake-fd.js");
+			writeFileSync(fakeFdPath, '#!/usr/bin/env node\nprocess.stdout.write("old.ts\\nmain.ts\\n");\n');
+			chmodSync(fakeFdPath, 0o755);
+		});
+
+		afterEach(() => {
+			rmSync(rootDir, { recursive: true, force: true });
+		});
+
+		test("uses the nearest @ after punctuation", async () => {
+			const provider = new CombinedAutocompleteProvider([], baseDir, fakeFdPath);
+			const line = "(@old),(@mai";
+			const result = await getSuggestions(provider, [line], 0, line.length);
+
+			assert.notEqual(result, null, "Should return suggestions for the current @ prefix");
+			assert.strictEqual(result?.prefix, "@mai");
+			assert.deepStrictEqual(
+				result?.items.map((item) => item.value),
+				["@main.ts"],
+			);
 		});
 	});
 
@@ -470,6 +502,74 @@ describe("CombinedAutocompleteProvider", () => {
 			assert.notEqual(result, null, "Should return suggestions for ./ directory path");
 			const values = result?.items.map((item) => item.value);
 			assert.ok(values?.includes("./src/"), `Expected ./src/ in ${JSON.stringify(values)}`);
+		});
+
+		test("completes ./ paths after punctuation", async () => {
+			setupFolder(baseDir, {
+				files: {
+					"update.sh": "#!/bin/bash",
+				},
+			});
+
+			const provider = new CombinedAutocompleteProvider([], baseDir);
+			const line = "(./up";
+			const result = await getSuggestions(provider, [line], 0, line.length, true);
+
+			assert.notEqual(result, null, "Should return suggestions for ./ path after punctuation");
+			assert.strictEqual(result?.prefix, "./up");
+			const item = result?.items.find((entry) => entry.value === "./update.sh");
+			assert.ok(item, "Should find update.sh suggestion");
+
+			const applied = provider.applyCompletion([line], 0, line.length, item!, result!.prefix);
+			assert.strictEqual(applied.lines[0], "(./update.sh");
+		});
+
+		test("does not split path prefixes containing punctuation", async () => {
+			setupFolder(baseDir, {
+				files: {
+					"(foo).txt": "content",
+					"foo(bar).txt": "content",
+					"name[part].txt": "content",
+				},
+			});
+
+			const provider = new CombinedAutocompleteProvider([], baseDir);
+
+			const parenLine = "./foo(";
+			const parenResult = await getSuggestions(provider, [parenLine], 0, parenLine.length, true);
+			assert.notEqual(parenResult, null, "Should return suggestions for path containing parentheses");
+			assert.strictEqual(parenResult?.prefix, "./foo(");
+			assert.ok(parenResult?.items.some((item) => item.value === "./foo(bar).txt"));
+
+			const completedParenLine = "./foo(bar).t";
+			const completedParenResult = await getSuggestions(
+				provider,
+				[completedParenLine],
+				0,
+				completedParenLine.length,
+				true,
+			);
+			assert.notEqual(completedParenResult, null, "Should preserve punctuation before file extensions");
+			assert.strictEqual(completedParenResult?.prefix, "./foo(bar).t");
+			assert.ok(completedParenResult?.items.some((item) => item.value === "./foo(bar).txt"));
+
+			const leadingPunctuationLine = "(foo).t";
+			const leadingPunctuationResult = await getSuggestions(
+				provider,
+				[leadingPunctuationLine],
+				0,
+				leadingPunctuationLine.length,
+				true,
+			);
+			assert.notEqual(leadingPunctuationResult, null, "Should preserve leading punctuation in filenames");
+			assert.strictEqual(leadingPunctuationResult?.prefix, "(foo).t");
+			assert.ok(leadingPunctuationResult?.items.some((item) => item.value === "(foo).txt"));
+
+			const bracketLine = "./name[";
+			const bracketResult = await getSuggestions(provider, [bracketLine], 0, bracketLine.length, true);
+			assert.notEqual(bracketResult, null, "Should return suggestions for path containing brackets");
+			assert.strictEqual(bracketResult?.prefix, "./name[");
+			assert.ok(bracketResult?.items.some((item) => item.value === "./name[part].txt"));
 		});
 	});
 

@@ -2345,6 +2345,42 @@ describe("Editor component", () => {
 			assert.ok(!afterMove.includes("message"), "stale argument menu must not survive the cursor move");
 		});
 
+		it("triggers @ autocomplete after punctuation while typing", async () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			let suggestionCalls = 0;
+			let requestedText = "";
+
+			const mockProvider: AutocompleteProvider = {
+				getSuggestions: async (lines, _cursorLine, cursorCol) => {
+					suggestionCalls += 1;
+					requestedText = (lines[0] || "").slice(0, cursorCol);
+					return {
+						items: [{ value: "@main.ts", label: "main.ts" }],
+						prefix: "@mai",
+					};
+				},
+				applyCompletion,
+			};
+
+			editor.setAutocompleteProvider(mockProvider);
+
+			editor.handleInput("(");
+			editor.handleInput("@");
+			editor.handleInput("m");
+			editor.handleInput("a");
+			editor.handleInput("i");
+
+			assert.strictEqual(suggestionCalls, 0);
+			assert.strictEqual(editor.isShowingAutocomplete(), false);
+
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			await flushAutocomplete();
+
+			assert.strictEqual(suggestionCalls, 1);
+			assert.strictEqual(requestedText, "(@mai");
+			assert.strictEqual(editor.isShowingAutocomplete(), true);
+		});
+
 		it("debounces # autocomplete while typing", async () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
 			let suggestionCalls = 0;

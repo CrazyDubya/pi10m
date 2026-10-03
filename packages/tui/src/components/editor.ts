@@ -1,4 +1,8 @@
-import type { AutocompleteProvider, AutocompleteSuggestions } from "../autocomplete.ts";
+import {
+	type AutocompleteProvider,
+	type AutocompleteSuggestions,
+	isAutocompleteTokenBoundary,
+} from "../autocomplete.ts";
 import { getKeybindings } from "../keybindings.ts";
 import { decodePrintableKey, matchesKey } from "../keys.ts";
 import { KillRing } from "../kill-ring.ts";
@@ -247,13 +251,20 @@ function escapeCharacterClass(value: string): string {
 	return value.replace(/[\\^$.*+?()[\]{}|-]/g, "\\$&");
 }
 
+const AUTOCOMPLETE_BOUNDARY_CLASS = "\\s()\\[\\]{}<>,;";
+const AUTOCOMPLETE_DEBOUNCE_BOUNDARY_CLASS = " \\t()\\[\\]{}<>,;";
+
 function buildTriggerPattern(triggerCharacters: string[]): RegExp {
-	return new RegExp(`(?:^|[\\s])[${triggerCharacters.map(escapeCharacterClass).join("")}][^\\s]*$`);
+	return new RegExp(
+		`(?:^|[${AUTOCOMPLETE_BOUNDARY_CLASS}])[${triggerCharacters.map(escapeCharacterClass).join("")}][^\\s]*$`,
+	);
 }
 
 function buildDebouncePattern(triggerCharacters: string[]): RegExp {
 	const escapedWithoutAt = triggerCharacters.filter((character) => character !== "@").map(escapeCharacterClass);
-	return new RegExp(`(?:^|[ \\t])(?:@(?:"[^"]*|[^\\s]*)|[${escapedWithoutAt.join("")}][^\\s]*)$`);
+	return new RegExp(
+		`(?:^|[${AUTOCOMPLETE_DEBOUNCE_BOUNDARY_CLASS}])(?:@(?:"[^"]*|[^\\s]*)|[${escapedWithoutAt.join("")}][^\\s]*)$`,
+	);
 }
 
 function createScrollBorder(direction: "↑" | "↓", hiddenLineCount: number, width: number): string {
@@ -1143,7 +1154,7 @@ export class Editor implements Component, Focusable {
 				const currentLine = this.state.lines[this.state.cursorLine] || "";
 				const textBeforeCursor = currentLine.slice(0, this.state.cursorCol);
 				const charBeforeSymbol = textBeforeCursor[textBeforeCursor.length - 2];
-				if (textBeforeCursor.length === 1 || charBeforeSymbol === " " || charBeforeSymbol === "\t") {
+				if (isAutocompleteTokenBoundary(charBeforeSymbol)) {
 					this.tryTriggerAutocomplete();
 				}
 			}
