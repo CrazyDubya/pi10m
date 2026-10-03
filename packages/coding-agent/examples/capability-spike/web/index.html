@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="light" />
+		<link rel="icon" href="data:," />
+		<title>Pi capability spike</title>
+		<link rel="stylesheet" href="/styles.css" />
+	</head>
+	<body>
+		<div class="page-grid" aria-hidden="true"></div>
+		<header class="masthead">
+			<div>
+				<p class="eyebrow">Client 02 / browser</p>
+				<h1>Pi, loosely coupled.</h1>
+			</div>
+			<div class="connection" data-state="connecting">
+				<span class="connection-dot"></span>
+				<span id="connection-label">Connecting</span>
+			</div>
+		</header>
+
+		<main>
+			<section class="transcript" id="transcript" aria-live="polite" aria-label="Conversation">
+				<div class="empty-state" id="empty-state">
+					<p class="index">01</p>
+					<p>Ask Pi to notify you, or fire the capability directly.</p>
+				</div>
+			</section>
+
+			<form class="composer" id="prompt-form">
+				<label for="prompt">Prompt</label>
+				<div class="input-row">
+					<textarea id="prompt" name="prompt" rows="2" placeholder="Notify me that the browser capability works" required></textarea>
+					<button type="submit" id="send" disabled>Send</button>
+				</div>
+				<div class="composer-meta">
+					<span>Enter to send · Shift+Enter for newline</span>
+					<button type="button" class="text-button" id="test-notify" disabled>Test notify directly</button>
+				</div>
+			</form>
+		</main>
+
+		<div class="notification-stage" aria-live="assertive" aria-atomic="true">
+			<div class="notification" id="notification" hidden></div>
+		</div>
+
+		<script type="module" src="/app.js"></script>
+	</body>
+</html>

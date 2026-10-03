@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="light" />
+		<link rel="icon" href="data:," />
+		<title>Pi Cap'n Web capability spike</title>
+		<link rel="stylesheet" href="/styles.css" />
+	</head>
+	<body>
+		<div class="page-grid" aria-hidden="true"></div>
+		<header class="masthead">
+			<div>
+				<p class="eyebrow">Client binding / Cap'n Web</p>
+				<h1>Pi, called remotely.</h1>
+			</div>
+			<div class="connection" data-state="connecting">
+				<span class="connection-dot"></span>
+				<span id="connection-label">Connecting</span>
+			</div>
+		</header>
+
+		<main>
+			<section class="transcript" id="transcript" aria-live="polite" aria-label="Conversation">
+				<div class="empty-state" id="empty-state">
+					<p class="index">01</p>
+					<p>Ask Pi to notify you, or call the client binding directly.</p>
+				</div>
+			</section>
+
+			<form class="composer" id="prompt-form">
+				<label for="prompt">Prompt</label>
+				<div class="input-row">
+					<textarea id="prompt" name="prompt" rows="2" placeholder="Notify me through Cap'n Web" required></textarea>
+					<button type="submit" id="send" disabled>Send</button>
+				</div>
+				<div class="composer-meta">
+					<span>Enter to send · Shift+Enter for newline</span>
+					<button type="button" class="text-button" id="test-notify" disabled>Call notify binding</button>
+				</div>
+			</form>
+		</main>
+
+		<div class="notification-stage" aria-live="assertive" aria-atomic="true">
+			<div class="notification" id="notification" hidden></div>
+		</div>
+
+		<script type="module" src="/app.js"></script>
+	</body>
+</html>
