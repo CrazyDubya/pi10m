@@ -441,6 +441,8 @@ export interface ToolRenderContext<TState = any, TArgs = any> {
 	showImages: boolean;
 	/** Whether the current result is an error. */
 	isError: boolean;
+	/** True when renderCall is producing a collapsed grouped-tool summary. */
+	toolGroupSummary?: boolean;
 }
 
 /**
@@ -459,6 +461,8 @@ export interface ToolDefinition<TParams extends TSchema = TSchema, TDetails = un
 	promptGuidelines?: string[];
 	/** Parameter schema (TypeBox) */
 	parameters: TParams;
+	/** Optional freeform group identifier for collapsed tool-call aggregation. */
+	toolGroup?: string;
 	/** Optional provider-side constrained sampling request for this tool. Set false to explicitly disable it, equivalent to leaving it undefined. */
 	constrainedSampling?: false | ConstrainedSamplingConfig;
 	/** Controls whether ToolExecutionComponent renders the standard colored shell or the tool renders its own framing. */

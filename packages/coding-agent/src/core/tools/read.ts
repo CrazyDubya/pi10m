@@ -148,8 +148,9 @@ function formatCompactReadCall(
 	classification: CompactReadClassification,
 	args: ReadRenderArgs | undefined,
 	theme: Theme,
+	showExpandHint = true,
 ): string {
-	const expandHint = theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
+	const expandHint = showExpandHint ? theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`) : "";
 	if (classification.kind === "skill") {
 		return (
 			theme.fg("customMessageLabel", `\x1b[1m[skill]\x1b[22m `) +
@@ -221,6 +222,7 @@ export function createReadToolDefinition(
 		promptSnippet: readToolSystemPromptContribution.snippet,
 		promptGuidelines: [...readToolSystemPromptContribution.guidelines],
 		parameters: readSchema,
+		toolGroup: "explore",
 		async execute(
 			_toolCallId,
 			{ path, offset, limit }: { path: string; offset?: number; limit?: number },
@@ -339,7 +341,7 @@ export function createReadToolDefinition(
 			const classification = !context.expanded ? getCompactReadClassification(args, context.cwd) : undefined;
 			text.setText(
 				classification
-					? formatCompactReadCall(classification, args, theme)
+					? formatCompactReadCall(classification, args, theme, !context.toolGroupSummary)
 					: formatReadCall(args, theme, context.cwd),
 			);
 			return text;
