@@ -7,6 +7,7 @@ import type { Context, ImageContent, Model, StopReason, StreamOptions, TextConte
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { resolveJsonSchemaStrictSampling } from "./constrained-sampling.ts";
+import { downgradeDeveloperMessages } from "./developer-messages.ts";
 import { transformMessages } from "./transform-messages.ts";
 
 type GoogleApiType = "google-generative-ai" | "google-vertex";
@@ -102,7 +103,11 @@ export function convertMessages<T extends GoogleApiType>(model: Model<T>, contex
 		return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
 	};
 
-	const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
+	const transformedMessages = transformMessages(
+		downgradeDeveloperMessages(context.messages),
+		model,
+		normalizeToolCallId,
+	);
 
 	for (const msg of transformedMessages) {
 		if (msg.role === "user") {

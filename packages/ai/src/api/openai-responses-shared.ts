@@ -39,6 +39,7 @@ import {
 	resolveGrammarConstrainedSampling,
 	resolveJsonSchemaStrictSampling,
 } from "./constrained-sampling.ts";
+import { downgradeDeveloperMessages } from "./developer-messages.ts";
 import { transformMessages } from "./transform-messages.ts";
 
 // =============================================================================
@@ -167,12 +168,18 @@ export function convertResponsesMessages<TApi extends Api>(
 		return `${normalizedCallId}|${normalizedItemId}`;
 	};
 
-	const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
+	const compat = model.compat as { supportsDeveloperRole?: boolean } | undefined;
+	// Keep the existing default: an unset flag still means the provider supports the developer role.
+	const supportsDeveloperRole = compat?.supportsDeveloperRole !== false;
+	const transformedMessages = transformMessages(
+		supportsDeveloperRole ? context.messages : downgradeDeveloperMessages(context.messages),
+		model,
+		normalizeToolCallId,
+	);
 
 	const includeSystemPrompt = options?.includeSystemPrompt ?? true;
 	if (includeSystemPrompt && context.systemPrompt) {
-		const compat = model.compat as { supportsDeveloperRole?: boolean } | undefined;
-		const role = model.reasoning && compat?.supportsDeveloperRole !== false ? "developer" : "system";
+		const role = model.reasoning && supportsDeveloperRole ? "developer" : "system";
 		messages.push({
 			role,
 			content: sanitizeSurrogates(context.systemPrompt),
@@ -181,7 +188,12 @@ export function convertResponsesMessages<TApi extends Api>(
 
 	let msgIndex = 0;
 	for (const msg of transformedMessages) {
-		if (msg.role === "user") {
+		if (msg.role === "developer") {
+			messages.push({
+				role: "developer",
+				content: sanitizeSurrogates(msg.content),
+			});
+		} else if (msg.role === "user") {
 			if (typeof msg.content === "string") {
 				messages.push({
 					role: "user",

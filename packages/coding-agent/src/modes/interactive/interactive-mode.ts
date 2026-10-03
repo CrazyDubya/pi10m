@@ -3169,9 +3169,9 @@ export class InteractiveMode {
 				if (event.message.role === "custom") {
 					this.addMessageToChat(event.message);
 					this.ui.requestRender();
-				} else if (event.message.role === "user") {
+				} else if (event.message.role === "user" || event.message.role === "developer") {
 					this.addMessageToChat(event.message);
-					this.updatePendingMessagesDisplay();
+					if (event.message.role === "user") this.updatePendingMessagesDisplay();
 					this.ui.requestRender();
 				} else if (event.message.role === "assistant") {
 					this.streamingComponent = new AssistantMessageComponent(
@@ -3217,7 +3217,7 @@ export class InteractiveMode {
 				break;
 
 			case "message_end":
-				if (event.message.role === "user") break;
+				if (event.message.role === "user" || event.message.role === "developer") break;
 				if (this.streamingComponent && event.message.role === "assistant") {
 					this.streamingMessage = event.message;
 					let errorMessage: string | undefined;
@@ -3576,6 +3576,22 @@ export class InteractiveMode {
 			}
 			case "toolResult": {
 				// Tool results are rendered inline with tool calls, handled separately
+				break;
+			}
+			case "developer": {
+				const developerComponent = new CustomMessageComponent(
+					{
+						role: "custom",
+						customType: "developer",
+						content: message.content,
+						display: true,
+						timestamp: message.timestamp,
+					},
+					undefined,
+					this.getMarkdownThemeWithSettings(),
+					this.outputPad,
+				);
+				this.chatContainer.addChild(developerComponent);
 				break;
 			}
 			default: {

@@ -26,6 +26,7 @@ import { shortHash } from "../utils/hash.ts";
 import { parseStreamingJson } from "../utils/json-parse.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { resolveJsonSchemaStrictSampling } from "./constrained-sampling.ts";
+import { downgradeDeveloperMessages } from "./developer-messages.ts";
 import { buildBaseOptions } from "./simple-options.ts";
 import { transformMessages } from "./transform-messages.ts";
 
@@ -70,7 +71,9 @@ export const stream: StreamFunction<"mistral-conversations", MistralOptions> = (
 			});
 
 			const normalizeMistralToolCallId = createMistralToolCallIdNormalizer();
-			const transformedMessages = transformMessages(context.messages, model, (id) => normalizeMistralToolCallId(id));
+			const transformedMessages = transformMessages(downgradeDeveloperMessages(context.messages), model, (id) =>
+				normalizeMistralToolCallId(id),
+			);
 
 			let payload = buildChatPayload(model, context, transformedMessages, options);
 			const nextPayload = await options?.onPayload?.(payload, model);
@@ -546,6 +549,11 @@ function toChatMessages(messages: Message[], supportsImages: boolean): ChatCompl
 			if (hadImages && !supportsImages) {
 				result.push({ role: "user", content: "(image omitted: model does not support images)" });
 			}
+			continue;
+		}
+
+		if (msg.role === "developer") {
+			// Downgraded before transform. Keep the branch so this loop stays exhaustive.
 			continue;
 		}
 
