@@ -193,6 +193,24 @@ export type {
 	ResolvedResource,
 } from "./core/package-manager.ts";
 export { DefaultPackageManager } from "./core/package-manager.ts";
+export {
+	formatPiDevShareSuccess,
+	getPiDevAuth,
+	loginPiDev,
+	PI_DEV_PROFILE_CONNECTED_STATUS,
+	PI_DEV_PROFILE_SCOPES,
+	PI_DEV_SESSION_SHARE_SCOPE,
+	PI_DEV_SETUP_PROFILE_CONNECTED_STATUS,
+	type PiDevAuthResult,
+	type PiDevDeviceCodeInfo,
+	type PiDevLoginOptions,
+	type PiDevShareUploadOptions,
+	type PiDevShareUploadResult,
+	parseShareCommand,
+	type ShareCommandMode,
+	type ShareCommandParseResult,
+	uploadPiDevSessionShare,
+} from "./core/pi-dev/index.ts";
 export type { ResourceCollision, ResourceDiagnostic, ResourceLoader } from "./core/resource-loader.ts";
 export { DefaultResourceLoader, loadProjectContextFiles } from "./core/resource-loader.ts";
 // SDK for programmatic usage
@@ -254,6 +272,8 @@ export {
 	type DefaultProjectTrust,
 	type ImageSettings,
 	type PackageSource,
+	type PiDevActivitySyncSettings,
+	type PiDevSettings,
 	type RetrySettings,
 	SettingsManager,
 	type SettingsManagerCreateOptions,

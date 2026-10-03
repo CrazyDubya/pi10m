@@ -131,6 +131,25 @@ export class LoginDialogComponent extends Container implements Focusable {
 	}
 
 	/**
+	 * Show a device authorization link when the URL already embeds the user code.
+	 * Used by pi.dev login and does not change the provider device-code dialog.
+	 */
+	showDeviceAuthorizationLink(info: { verificationUri: string; displayVerificationUri?: string }): void {
+		this.contentContainer.clear();
+		this.contentContainer.addChild(new Spacer(1));
+		const displayUri = info.displayVerificationUri ?? info.verificationUri;
+		const linkedUrl = `\x1b]8;;${info.verificationUri}\x07${displayUri}\x1b]8;;\x07`;
+		this.contentContainer.addChild(new Text(theme.fg("accent", linkedUrl), 1, 0));
+
+		const clickHint = process.platform === "darwin" ? "Cmd+click to open" : "Ctrl+click to open";
+		const hyperlink = `\x1b]8;;${info.verificationUri}\x07${clickHint}\x1b]8;;\x07`;
+		this.contentContainer.addChild(new Text(theme.fg("dim", hyperlink), 1, 0));
+
+		openBrowser(info.verificationUri);
+		this.tui.requestRender();
+	}
+
+	/**
 	 * Show input for manual code/URL entry (for callback server providers)
 	 */
 	showManualInput(prompt: string): Promise<string> {

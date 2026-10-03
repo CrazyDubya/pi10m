@@ -62,6 +62,16 @@ export interface MarkdownSettings {
 	mermaid?: MermaidRenderingMode; // default: "streaming"
 }
 
+export interface PiDevActivitySyncSettings {
+	deviceId?: string;
+	enabled?: boolean;
+	intervalHours?: number;
+}
+
+export interface PiDevSettings {
+	activitySync?: PiDevActivitySyncSettings;
+}
+
 export interface WarningSettings {
 	anthropicExtraUsage?: boolean; // default: true
 }
@@ -129,6 +139,7 @@ export interface Settings {
 	showHardwareCursor?: HardwareCursorSetting; // boolean keeps both cursors; "native" shows only the hardware cursor
 	markdown?: MarkdownSettings;
 	warnings?: WarningSettings;
+	piDev?: PiDevSettings;
 	sessionDir?: string; // Custom session storage directory (same format as --session-dir CLI flag)
 	httpProxy?: string; // Proxy URL applied as HTTP_PROXY and HTTPS_PROXY for Pi-managed HTTP clients
 	httpIdleTimeoutMs?: number; // HTTP header/body idle timeout in milliseconds; 0 disables it
@@ -1288,6 +1299,48 @@ export class SettingsManager {
 	setWarnings(warnings: WarningSettings): void {
 		this.globalSettings.warnings = { ...warnings };
 		this.markModified("warnings");
+		this.save();
+	}
+
+	private ensureGlobalPiDevActivitySyncSettings(): PiDevActivitySyncSettings {
+		if (!this.globalSettings.piDev) {
+			this.globalSettings.piDev = {};
+		}
+		if (!this.globalSettings.piDev.activitySync) {
+			this.globalSettings.piDev.activitySync = {};
+		}
+		return this.globalSettings.piDev.activitySync;
+	}
+
+	getActivitySyncDeviceId(): string | undefined {
+		const deviceId = this.globalSettings.piDev?.activitySync?.deviceId;
+		return deviceId && /^[0-9a-fA-F-]{36}$/.test(deviceId) ? deviceId : undefined;
+	}
+
+	setActivitySyncDeviceId(deviceId: string): void {
+		const activitySync = this.ensureGlobalPiDevActivitySyncSettings();
+		activitySync.deviceId = deviceId;
+		this.markModified("piDev", "activitySync");
+		this.save();
+	}
+
+	getActivitySyncSettings(): { enabled: boolean; intervalHours: number } {
+		const activitySync = this.globalSettings.piDev?.activitySync;
+		const intervalHours = activitySync?.intervalHours;
+		return {
+			enabled: activitySync?.enabled ?? false,
+			intervalHours:
+				typeof intervalHours === "number" && Number.isFinite(intervalHours) ? Math.max(1, intervalHours) : 24,
+		};
+	}
+
+	setActivitySyncEnabled(enabled: boolean): void {
+		const activitySync = this.ensureGlobalPiDevActivitySyncSettings();
+		activitySync.enabled = enabled;
+		if (enabled) {
+			activitySync.intervalHours = 24;
+		}
+		this.markModified("piDev", "activitySync");
 		this.save();
 	}
 }

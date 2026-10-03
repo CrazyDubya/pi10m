@@ -79,6 +79,7 @@ export interface SettingsConfig {
 	showCacheMissNotices: boolean;
 	collapseChangelog: boolean;
 	enableInstallTelemetry: boolean;
+	activitySyncEnabled: boolean;
 	doubleEscapeAction: "fork" | "tree" | "none";
 	treeFilterMode: "default" | "no-tools" | "user-only" | "labeled-only" | "all";
 	showHardwareCursor: HardwareCursorSetting;
@@ -113,6 +114,7 @@ export interface SettingsCallbacks {
 	onShowCacheMissNoticesChange: (shown: boolean) => void;
 	onCollapseChangelogChange: (collapsed: boolean) => void;
 	onEnableInstallTelemetryChange: (enabled: boolean) => void;
+	onActivitySyncChange: (enabled: boolean) => void;
 	onDoubleEscapeActionChange: (action: "fork" | "tree" | "none") => void;
 	onTreeFilterModeChange: (mode: "default" | "no-tools" | "user-only" | "labeled-only" | "all") => void;
 	onShowHardwareCursorChange: (setting: HardwareCursorSetting) => void;
@@ -577,6 +579,13 @@ export class SettingsSelectorComponent extends Container {
 				values: ["true", "false"],
 			},
 			{
+				id: "activity-sync",
+				label: "Activity sync",
+				description: "Sync session activity metadata to your pi.dev profile",
+				currentValue: config.activitySyncEnabled ? "true" : "false",
+				values: ["true", "false"],
+			},
+			{
 				id: "default-project-trust",
 				label: "Default project trust",
 				description: "Fallback behavior when no extension or saved trust decision decides project trust",
@@ -835,6 +844,9 @@ export class SettingsSelectorComponent extends Container {
 						break;
 					case "install-telemetry":
 						callbacks.onEnableInstallTelemetryChange(newValue === "true");
+						break;
+					case "activity-sync":
+						callbacks.onActivitySyncChange(newValue === "true");
 						break;
 					case "default-project-trust": {
 						const defaultProjectTrust = DEFAULT_PROJECT_TRUST_BY_LABEL.get(newValue);

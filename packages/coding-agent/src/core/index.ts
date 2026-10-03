@@ -3,6 +3,15 @@
  */
 
 export {
+	type ActivitySyncResult,
+	type ActivitySyncStatus,
+	getStableActivitySyncDeviceId,
+	loadActivitySyncState,
+	type SyncSessionAnalyticsOptions,
+	syncSessionAnalytics,
+} from "./activity-sync/index.ts";
+
+export {
 	AgentSession,
 	type AgentSessionConfig,
 	type AgentSessionEvent,
@@ -77,4 +86,22 @@ export {
 	type TurnStartEvent,
 	type WorkingIndicatorOptions,
 } from "./extensions/index.ts";
+export {
+	formatPiDevShareSuccess,
+	getPiDevAuth,
+	loginPiDev,
+	PI_DEV_PROFILE_CONNECTED_STATUS,
+	PI_DEV_PROFILE_SCOPES,
+	PI_DEV_SESSION_SHARE_SCOPE,
+	PI_DEV_SETUP_PROFILE_CONNECTED_STATUS,
+	type PiDevAuthResult,
+	type PiDevDeviceCodeInfo,
+	type PiDevLoginOptions,
+	type PiDevShareUploadOptions,
+	type PiDevShareUploadResult,
+	parseShareCommand,
+	type ShareCommandMode,
+	type ShareCommandParseResult,
+	uploadPiDevSessionShare,
+} from "./pi-dev/index.ts";
 export { createSyntheticSourceInfo } from "./source-info.ts";
