@@ -9,7 +9,7 @@ import { truncateToVisualLines } from "../../modes/interactive/components/visual
 import { theme } from "../../modes/interactive/theme/theme.ts";
 import { waitForChildProcess } from "../../utils/child-process.ts";
 import {
-	getShellConfig,
+	ensureShellConfig,
 	getShellEnv,
 	killProcessTree,
 	trackDetachedChildPid,
@@ -91,7 +91,7 @@ export function createLocalBashOperations(options?: { shellPath?: string }): Bas
 			if (signal?.aborted) {
 				throw new Error("aborted");
 			}
-			const shellConfig = getShellConfig(options?.shellPath);
+			const shellConfig = await ensureShellConfig(options?.shellPath, { silent: true });
 			try {
 				await fsAccess(cwd, constants.F_OK);
 			} catch {

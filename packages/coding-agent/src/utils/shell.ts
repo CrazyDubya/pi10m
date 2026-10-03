@@ -2,6 +2,11 @@ import { existsSync } from "node:fs";
 import { delimiter } from "node:path";
 import { spawn, spawnSync } from "child_process";
 import { getBinDir } from "../config.ts";
+import {
+	ensureWindowsPortableGitBash,
+	getManagedWindowsPortableGitBashCandidates,
+	getManagedWindowsPortableGitBashPath,
+} from "./tools-manager.ts";
 
 export interface ShellConfig {
 	shell: string;
@@ -61,7 +66,7 @@ function findBashOnPath(): string | null {
  * Resolve shell configuration based on platform and an optional explicit shell path.
  * Resolution order:
  * 1. User-specified shellPath
- * 2. On Windows: Git Bash in known locations, then bash on PATH
+ * 2. On Windows: Git Bash in known locations, managed Portable Git Bash, then bash on PATH
  * 3. On Unix: /bin/bash, then bash on PATH, then fallback to sh
  */
 export function getShellConfig(customShellPath?: string): ShellConfig {
@@ -91,6 +96,11 @@ export function getShellConfig(customShellPath?: string): ShellConfig {
 			}
 		}
 
+		const managedPortableGitBash = getManagedWindowsPortableGitBashPath();
+		if (managedPortableGitBash) {
+			return getBashShellConfig(managedPortableGitBash);
+		}
+
 		// 3. Fallback: search bash.exe on PATH (Cygwin, MSYS2, WSL, etc.)
 		const bashOnPath = findBashOnPath();
 		if (bashOnPath) {
@@ -100,9 +110,13 @@ export function getShellConfig(customShellPath?: string): ShellConfig {
 		throw new Error(
 			`No bash shell found. Options:\n` +
 				`  1. Install Git for Windows: https://git-scm.com/download/win\n` +
-				`  2. Add your bash to PATH (Cygwin, MSYS2, etc.)\n` +
-				"  3. Set shellPath in settings.json\n\n" +
-				`Searched Git Bash in:\n${paths.map((p) => `  ${p}`).join("\n")}`,
+				`  2. Let pi download Portable Git Bash automatically\n` +
+				`  3. Add your bash to PATH (Cygwin, MSYS2, etc.)\n` +
+				"  4. Set shellPath in settings.json\n\n" +
+				`Searched Git Bash in:\n${paths.map((p) => `  ${p}`).join("\n")}\n` +
+				`Searched managed Portable Git Bash in:\n${getManagedWindowsPortableGitBashCandidates()
+					.map((p) => `  ${p}`)
+					.join("\n")}`,
 		);
 	}
 
@@ -117,6 +131,38 @@ export function getShellConfig(customShellPath?: string): ShellConfig {
 	}
 
 	return { shell: "sh", args: ["-c"] };
+}
+
+export async function ensureShellConfig(
+	customShellPath?: string,
+	options: { silent?: boolean } = {},
+): Promise<ShellConfig> {
+	try {
+		return getShellConfig(customShellPath);
+	} catch (error) {
+		if (customShellPath || process.platform !== "win32") {
+			throw error;
+		}
+
+		const installedBash = await ensureWindowsPortableGitBash(options.silent ?? false);
+		if (installedBash) {
+			return getBashShellConfig(installedBash);
+		}
+		throw error;
+	}
+}
+
+export async function ensureWindowsBash(
+	customShellPath?: string,
+	silent: boolean = false,
+): Promise<string | undefined> {
+	if (process.platform !== "win32") return undefined;
+	try {
+		const { shell } = await ensureShellConfig(customShellPath, { silent });
+		return shell;
+	} catch {
+		return undefined;
+	}
 }
 
 export function getShellEnv(): NodeJS.ProcessEnv {
