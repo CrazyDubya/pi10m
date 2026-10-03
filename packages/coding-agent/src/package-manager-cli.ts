@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
 import chalk from "chalk";
 import { selectConfig } from "./cli/config-selector.ts";
+import { selectLoadout } from "./cli/loadout-selector.ts";
 import { createProjectTrustContext } from "./cli/project-trust.ts";
 import {
 	APP_NAME,
@@ -90,6 +91,7 @@ function getPackageCommandUsage(command: PackageCommand): string {
 }
 
 const CONFIG_COMMAND_USAGE = `${APP_NAME} config [-l] [--approve|--no-approve]`;
+const LOADOUT_COMMAND_USAGE = `${APP_NAME} loadout [-l] [--approve|--no-approve]`;
 
 function printConfigCommandHelp(): void {
 	console.log(`${chalk.bold("Usage:")}
@@ -607,12 +609,22 @@ export async function handleConfigCommand(
 	runtimeOptions: PackageCommandRuntimeOptions = {},
 ): Promise<boolean> {
 	const [command, ...rest] = args;
-	if (command !== "config") {
+	if (command !== "config" && command !== "loadout") {
 		return false;
 	}
+	const usage = command === "loadout" ? LOADOUT_COMMAND_USAGE : CONFIG_COMMAND_USAGE;
 
 	if (rest.includes("-h") || rest.includes("--help")) {
-		printConfigCommandHelp();
+		if (command === "loadout") {
+			console.log(`
+${chalk.bold("Usage:")}
+  ${usage}
+
+Open the loadout selector. ${chalk.bold("config")} still edits saved package settings.
+`);
+		} else {
+			printConfigCommandHelp();
+		}
 		return true;
 	}
 
@@ -626,13 +638,13 @@ export async function handleConfigCommand(
 		} else if (arg === "-na" || arg === "--no-approve") {
 			projectTrustOverride = false;
 		} else if (arg.startsWith("-")) {
-			console.error(chalk.red(`Unknown option ${arg} for "config".`));
-			console.error(chalk.dim(`Use "${APP_NAME} --help" or "${CONFIG_COMMAND_USAGE}".`));
+			console.error(chalk.red(`Unknown option ${arg} for "${command}".`));
+			console.error(chalk.dim(`Use "${APP_NAME} --help" or "${usage}".`));
 			process.exitCode = 1;
 			return true;
 		} else {
 			console.error(chalk.red(`Unexpected argument ${arg}.`));
-			console.error(chalk.dim(`Usage: ${CONFIG_COMMAND_USAGE}`));
+			console.error(chalk.dim(`Usage: ${usage}`));
 			process.exitCode = 1;
 			return true;
 		}
@@ -663,14 +675,16 @@ export async function handleConfigCommand(
 		? await new DefaultPackageManager({ cwd, agentDir, settingsManager }).resolve()
 		: globalResolvedPaths;
 
-	await selectConfig({
+	const selectorOptions = {
 		resolvedPaths: { global: globalResolvedPaths, project: projectResolvedPaths },
 		settingsManager,
 		cwd,
 		agentDir,
-		writeScope: local ? "project" : "global",
+		writeScope: local ? ("project" as const) : ("global" as const),
 		projectModeAvailable: settingsManager.isProjectTrusted(),
-	});
+	};
+	if (command === "loadout") await selectLoadout(selectorOptions);
+	else await selectConfig(selectorOptions);
 
 	process.exit(0);
 }

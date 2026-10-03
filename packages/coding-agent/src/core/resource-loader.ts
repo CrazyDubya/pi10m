@@ -17,6 +17,15 @@ import {
 } from "./extensions/loader.ts";
 import type { Extension, ExtensionRuntime, InlineExtension, LoadExtensionsResult } from "./extensions/types.ts";
 import { findGitPaths } from "./footer-data-provider.ts";
+import {
+	cloneLoadoutOverrides,
+	cloneLoadoutSnapshot,
+	LOADOUT_ENTRY_VERSION,
+	type LoadoutOverride,
+	type LoadoutSnapshot,
+	parseLoadoutEntryPayload,
+	resolveLoadoutOverlay,
+} from "./loadout.ts";
 import { DefaultPackageManager, type PathMetadata, type ResolvedResource } from "./package-manager.ts";
 import type { PromptTemplate } from "./prompt-templates.ts";
 import { loadPromptTemplates } from "./prompt-templates.ts";
@@ -48,6 +57,10 @@ export interface ResourceLoader {
 	getAppendSystemPromptSources(): Array<{ path: string }>;
 	extendResources(paths: ResourceExtensionPaths): void;
 	reload(options?: ResourceLoaderReloadOptions): Promise<void>;
+	/** Optional capability implemented by DefaultResourceLoader for session loadout overlays. */
+	getLoadoutSnapshot?(): LoadoutSnapshot;
+	/** Optional capability implemented by DefaultResourceLoader for session loadout overlays. */
+	setLoadoutOverrides?(overrides: readonly LoadoutOverride[]): void;
 }
 
 function resolvePromptInput(input: string | undefined, description: string): string | undefined {
@@ -248,6 +261,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private resourceMetadataByPath: Map<string, PathMetadata>;
 	private lastPromptPaths: string[];
 	private lastThemePaths: string[];
+	private loadoutOverrides: LoadoutOverride[];
+	private loadoutSnapshot: LoadoutSnapshot;
 	private loaded: boolean;
 
 	constructor(options: DefaultResourceLoaderOptions) {
@@ -297,6 +312,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.resourceMetadataByPath = new Map();
 		this.lastPromptPaths = [];
 		this.lastThemePaths = [];
+		this.loadoutOverrides = [];
+		this.loadoutSnapshot = { resources: [], overrides: [], diagnostics: [] };
 		this.loaded = false;
 	}
 
@@ -334,6 +351,16 @@ export class DefaultResourceLoader implements ResourceLoader {
 
 	getAppendSystemPromptSources(): Array<{ path: string }> {
 		return this.appendSystemPromptSourcePaths.map((path) => ({ path }));
+	}
+
+	getLoadoutSnapshot(): LoadoutSnapshot {
+		return cloneLoadoutSnapshot(this.loadoutSnapshot);
+	}
+
+	setLoadoutOverrides(overrides: readonly LoadoutOverride[]): void {
+		const payload = parseLoadoutEntryPayload({ version: LOADOUT_ENTRY_VERSION, overrides });
+		if (!payload) throw new Error("Invalid loadout overrides");
+		this.loadoutOverrides = cloneLoadoutOverrides(payload.overrides);
 	}
 
 	extendResources(paths: ResourceExtensionPaths): void {
@@ -400,7 +427,13 @@ export class DefaultResourceLoader implements ResourceLoader {
 
 		// reload() preserves SettingsManager.projectTrusted and reloads settings for that trust state.
 		await this.settingsManager.reload();
-		const resolvedPaths = await this.packageManager.resolve();
+		const baseResolvedPaths = await this.packageManager.resolve();
+		const overlay = resolveLoadoutOverlay(baseResolvedPaths, this.loadoutOverrides, {
+			cwd: this.cwd,
+			agentDir: this.agentDir,
+		});
+		const resolvedPaths = overlay.resolvedPaths;
+		this.loadoutSnapshot = overlay.snapshot;
 		const cliExtensionPaths = await this.packageManager.resolveExtensionSources(this.additionalExtensionPaths, {
 			temporary: true,
 		});
@@ -546,7 +579,11 @@ export class DefaultResourceLoader implements ResourceLoader {
 	}
 
 	private async loadCurrentExtensionSet(options: { includeInlineFactories: boolean }): Promise<LoadExtensionsResult> {
-		const resolvedPaths = await this.packageManager.resolve();
+		const baseResolvedPaths = await this.packageManager.resolve();
+		const resolvedPaths = resolveLoadoutOverlay(baseResolvedPaths, this.loadoutOverrides, {
+			cwd: this.cwd,
+			agentDir: this.agentDir,
+		}).resolvedPaths;
 		const cliExtensionPaths = await this.packageManager.resolveExtensionSources(this.additionalExtensionPaths, {
 			temporary: true,
 		});

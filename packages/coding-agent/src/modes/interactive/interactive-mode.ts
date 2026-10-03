@@ -81,6 +81,7 @@ import type {
 import { FooterDataProvider, type ReadonlyFooterDataProvider } from "../../core/footer-data-provider.ts";
 import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "../../core/http-dispatcher.ts";
 import { type AppKeybinding, KeybindingsManager } from "../../core/keybindings.ts";
+import { appendSessionLoadout, getSessionLoadout, loadoutOverridesEqual } from "../../core/loadout.ts";
 import { createCompactionSummaryMessage } from "../../core/messages.ts";
 import {
 	defaultModelPerProvider,
@@ -135,6 +136,10 @@ import {
 	OAuthSelectorComponent,
 } from "./components/oauth-selector.ts";
 import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.ts";
+import {
+	type SessionLoadoutSelection,
+	SessionLoadoutSelectorComponent,
+} from "./components/session-loadout-selector.ts";
 import { SessionSelectorComponent } from "./components/session-selector.ts";
 import { SettingsSelectorComponent } from "./components/settings-selector.ts";
 import { SkillInvocationMessageComponent } from "./components/skill-invocation-message.ts";
@@ -428,6 +433,7 @@ export class InteractiveMode {
 	private lastEscapeTime = 0;
 	private changelogMarkdown: string | undefined = undefined;
 	private startupNoticesShown = false;
+	private loadoutRestoreDecisions = new Set<string>();
 	private anthropicSubscriptionWarningShown = false;
 
 	// Status line tracking (for mutating immediately-sequential status updates)
@@ -992,6 +998,7 @@ export class InteractiveMode {
 
 		// Initialize available provider count for footer display
 		await this.updateAvailableProviderCount();
+		await this.maybeRestoreSavedLoadout();
 	}
 
 	/**
@@ -2923,6 +2930,11 @@ export class InteractiveMode {
 			if (text === "/settings") {
 				this.showSettingsSelector();
 				this.editor.setText("");
+				return;
+			}
+			if (text === "/loadout") {
+				this.editor.setText("");
+				this.showLoadoutSelector();
 				return;
 			}
 			if (text === "/scoped-models") {
@@ -5704,6 +5716,105 @@ export class InteractiveMode {
 	// =========================================================================
 	// Command handlers
 	// =========================================================================
+
+	private loadoutActionBlocked(action: "opening" | "applying"): boolean {
+		if (this.session.isStreaming) {
+			this.showWarning(`Wait for the current response to finish before ${action} a session loadout.`);
+			return true;
+		}
+		if (this.session.isCompacting) {
+			this.showWarning(`Wait for compaction to finish before ${action} a session loadout.`);
+			return true;
+		}
+		if (this.session.isBashRunning) {
+			this.showWarning(`Wait for the bash command to finish before ${action} a session loadout.`);
+			return true;
+		}
+		return false;
+	}
+
+	private getLoadoutLoader():
+		| {
+				getLoadoutSnapshot: NonNullable<AgentSession["resourceLoader"]["getLoadoutSnapshot"]>;
+				setLoadoutOverrides: NonNullable<AgentSession["resourceLoader"]["setLoadoutOverrides"]>;
+		  }
+		| undefined {
+		const loader = this.session.resourceLoader;
+		if (!loader.getLoadoutSnapshot || !loader.setLoadoutOverrides) return undefined;
+		return {
+			getLoadoutSnapshot: loader.getLoadoutSnapshot.bind(loader),
+			setLoadoutOverrides: loader.setLoadoutOverrides.bind(loader),
+		};
+	}
+
+	private showLoadoutDiagnostics(): void {
+		const loader = this.getLoadoutLoader();
+		if (!loader) return;
+		for (const diagnostic of loader.getLoadoutSnapshot().diagnostics) {
+			this.showWarning(diagnostic.message);
+		}
+	}
+
+	private async applySessionLoadout(selection: SessionLoadoutSelection, persist: boolean): Promise<void> {
+		if (this.loadoutActionBlocked("applying")) return;
+		const loader = this.getLoadoutLoader();
+		if (!loader) {
+			this.showWarning("Session loadouts are unavailable with the configured resource loader.");
+			return;
+		}
+		const previousOverrides = loader.getLoadoutSnapshot().overrides;
+		loader.setLoadoutOverrides(selection.overrides);
+		await this.handleReloadCommand();
+		if (persist && (selection.explicitReset || !loadoutOverridesEqual(previousOverrides, selection.overrides))) {
+			appendSessionLoadout(this.sessionManager, selection.overrides);
+		}
+		this.showLoadoutDiagnostics();
+	}
+
+	private showLoadoutSelector(): void {
+		if (this.loadoutActionBlocked("opening")) return;
+		const loader = this.getLoadoutLoader();
+		if (!loader) {
+			this.showWarning("Session loadouts are unavailable with the configured resource loader.");
+			return;
+		}
+		this.showSelector((done) => {
+			const selector = new SessionLoadoutSelectorComponent({
+				snapshot: loader.getLoadoutSnapshot(),
+				agentDir: this.runtimeHost.services.agentDir,
+				terminalHeight: this.ui.terminal.rows,
+				onApply: (selection) => {
+					if (this.loadoutActionBlocked("applying")) return;
+					done();
+					void this.applySessionLoadout(selection, true);
+				},
+				onCancel: () => {
+					done();
+					this.ui.requestRender();
+				},
+				requestRender: () => this.ui.requestRender(),
+			});
+			return { component: selector, focus: selector.getResourceList() };
+		});
+	}
+
+	private getLoadoutRestoreDecisionKey(): string {
+		return this.sessionManager.getSessionFile() ?? this.sessionManager.getSessionId();
+	}
+
+	private async maybeRestoreSavedLoadout(): Promise<void> {
+		const key = this.getLoadoutRestoreDecisionKey();
+		if (this.loadoutRestoreDecisions.has(key)) return;
+		const saved = getSessionLoadout(this.sessionManager);
+		if (!saved || saved.overrides.length === 0) return;
+		this.loadoutRestoreDecisions.add(key);
+		const accepted = await this.showExtensionConfirm(
+			"Restore session loadout?",
+			"Continue with the last session's extensions, skills, prompts, and themes? Missing resources will be skipped.",
+		);
+		if (!accepted) return;
+		await this.applySessionLoadout({ overrides: saved.overrides, explicitReset: false }, false);
+	}
 
 	private async handleReloadCommand(): Promise<void> {
 		if (this.session.isStreaming) {
