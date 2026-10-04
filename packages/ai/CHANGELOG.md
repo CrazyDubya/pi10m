@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Replaced the `http-proxy-agent` and `https-proxy-agent` dependencies with vendored `EnvHttpProxyAgent`/`EnvHttpsProxyAgent` (`packages/ai/src/utils/node-proxy-agent.ts`) and proxy env resolution (`packages/ai/src/utils/proxy-env.ts`); the Bedrock provider now uses the vendored agents. SOCKS and PAC proxy URLs fail explicitly.
+
 ## [0.84.0] - 2026-08-06
 
 ### Breaking Changes

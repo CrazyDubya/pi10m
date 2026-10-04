@@ -1,4 +1,3 @@
-import type { Agent as HttpsAgent } from "node:https";
 import {
 	BedrockRuntimeClient,
 	type BedrockRuntimeClientConfig,
@@ -24,8 +23,6 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 import type { BuildMiddleware, DocumentType, MetadataBearer } from "@smithy/types";
-import { HttpProxyAgent } from "http-proxy-agent";
-import { HttpsProxyAgent } from "https-proxy-agent";
 import { calculateCost } from "../models.ts";
 import type {
 	Api,
@@ -53,6 +50,7 @@ import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
 import { parseStreamingJson } from "../utils/json-parse.ts";
 import { resolveHttpProxyUrlForTarget } from "../utils/node-http-proxy.ts";
+import { EnvHttpProxyAgent, EnvHttpsProxyAgent } from "../utils/node-proxy-agent.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { resolveJsonSchemaStrictSampling } from "./constrained-sampling.ts";
@@ -200,10 +198,11 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 			if (proxyUrl) {
 				// Bedrock runtime uses NodeHttp2Handler by default since v3.798.0, which is based
 				// on `http2` module and has no support for http agent.
-				// Use NodeHttpHandler to support HTTP(S) proxy agents.
+				// Use NodeHttpHandler with vendored HTTP(S) proxy agents (no extra dependencies).
+				const proxy = proxyUrl.toString();
 				config.requestHandler = new NodeHttpHandler({
-					httpAgent: new HttpProxyAgent(proxyUrl),
-					httpsAgent: new HttpsProxyAgent(proxyUrl) as unknown as HttpsAgent,
+					httpAgent: new EnvHttpProxyAgent({ getProxyForUrl: () => proxy }),
+					httpsAgent: new EnvHttpsProxyAgent({ getProxyForUrl: () => proxy }),
 				});
 			} else if (getProviderEnvValue("AWS_BEDROCK_FORCE_HTTP1", options.env) === "1") {
 				// Some custom endpoints require HTTP/1.1 instead of HTTP/2
