@@ -62,7 +62,12 @@ import {
 	loadActivitySyncState,
 	syncSessionAnalytics,
 } from "../../core/activity-sync/index.ts";
-import { type AgentSession, type AgentSessionEvent, parseSkillBlock } from "../../core/agent-session.ts";
+import {
+	type AgentSession,
+	type AgentSessionEvent,
+	parseSkillBlock,
+	type RuntimeReloadCore,
+} from "../../core/agent-session.ts";
 import { type AgentSessionRuntime, SessionImportFileNotFoundError } from "../../core/agent-session-runtime.ts";
 import { AuthStorage } from "../../core/auth-storage.ts";
 import {
@@ -1908,9 +1913,7 @@ export class InteractiveMode {
 				switchSession: async (sessionPath, options) => {
 					return this.handleResumeSession(sessionPath, options);
 				},
-				reload: async () => {
-					await this.handleReloadCommand();
-				},
+				reload: () => this.session.requestReload(),
 			},
 			shutdownHandler: () => {
 				this.shutdownRequested = true;
@@ -1921,6 +1924,7 @@ export class InteractiveMode {
 			onError: (error) => {
 				this.showExtensionError(error.extensionPath, error.error, error.stack);
 			},
+			reloadHandler: (reloadCore) => this.handleReloadCommand(reloadCore),
 		});
 
 		setRegisteredThemes(this.session.resourceLoader.getThemes().themes);
@@ -3066,7 +3070,10 @@ export class InteractiveMode {
 			}
 			if (text === "/reload") {
 				this.editor.setText("");
-				await this.handleReloadCommand();
+				if (this.session.isStreaming || this.session.isCompacting) {
+					this.showStatus("Reload requested; will run when the current operation finishes.");
+				}
+				await this.session.requestReload();
 				return;
 			}
 			if (text === "/debug") {
@@ -5807,7 +5814,7 @@ export class InteractiveMode {
 		}
 		const previousOverrides = loader.getLoadoutSnapshot().overrides;
 		loader.setLoadoutOverrides(selection.overrides);
-		await this.handleReloadCommand();
+		await this.session.reload();
 		if (persist && (selection.explicitReset || !loadoutOverridesEqual(previousOverrides, selection.overrides))) {
 			appendSessionLoadout(this.sessionManager, selection.overrides);
 		}
@@ -5887,16 +5894,7 @@ export class InteractiveMode {
 		await this.applySessionLoadout({ overrides: saved.overrides, explicitReset: false }, false);
 	}
 
-	private async handleReloadCommand(): Promise<void> {
-		if (this.session.isStreaming) {
-			this.showWarning("Wait for the current response to finish before reloading.");
-			return;
-		}
-		if (this.session.isCompacting) {
-			this.showWarning("Wait for compaction to finish before reloading.");
-			return;
-		}
-
+	private async handleReloadCommand(reloadCore: RuntimeReloadCore): Promise<void> {
 		this.resetExtensionUI();
 
 		const reloadBox = new Container();
@@ -5940,7 +5938,7 @@ export class InteractiveMode {
 		};
 
 		try {
-			await this.session.reload({ beforeSessionStart: restoreChatBeforeSessionStart });
+			await reloadCore({ beforeSessionStart: restoreChatBeforeSessionStart });
 			restoreChatBeforeSessionStart();
 			this.keybindings.reload();
 			const activeHeader = this.customHeader ?? this.builtInHeader;
@@ -6700,10 +6698,8 @@ export class InteractiveMode {
 	}
 
 	private async handleBashCommand(command: string, excludeFromContext = false): Promise<void> {
-		const extensionRunner = this.session.extensionRunner;
-
 		// Emit user_bash event to let extensions intercept
-		const eventResult = await extensionRunner.emitUserBash({
+		const eventResult = await this.session.emitUserBash({
 			type: "user_bash",
 			command,
 			excludeFromContext,

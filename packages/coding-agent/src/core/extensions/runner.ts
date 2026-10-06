@@ -418,7 +418,7 @@ export class ExtensionRunner {
 			this.forkHandler = actions.fork;
 			this.navigateTreeHandler = actions.navigateTree;
 			this.switchSessionHandler = actions.switchSession;
-			this.reloadHandler = actions.reload;
+			this.reloadHandler = actions.reload ?? (async () => {});
 			return;
 		}
 
@@ -742,6 +742,10 @@ export class ExtensionRunner {
 			compact: (options) => {
 				runner.assertActive();
 				runner.compactFn(options);
+			},
+			reload: () => {
+				runner.assertActive();
+				return runner.reloadHandler();
 			},
 			getSystemPrompt: () => {
 				runner.assertActive();

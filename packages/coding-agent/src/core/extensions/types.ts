@@ -382,7 +382,10 @@ export interface ExtensionCommandContext extends ExtensionContext {
 		options?: { withSession?: (ctx: ReplacedSessionContext) => Promise<void> },
 	): Promise<{ cancelled: boolean }>;
 
-	/** Reload extensions, skills, prompts, themes, and context files. */
+	/**
+	 * Request a runtime reload. Resolves after the request is accepted; reload may
+	 * run later when the session reaches a safe boundary.
+	 */
 	reload(): Promise<void>;
 }
 
@@ -1686,7 +1689,8 @@ export interface ExtensionCommandContextActions {
 		sessionPath: string,
 		options?: { withSession?: (ctx: ReplacedSessionContext) => Promise<void> },
 	) => Promise<{ cancelled: boolean }>;
-	reload: () => Promise<void>;
+	/** Request a runtime reload. Optional; defaults to the session's reload request. */
+	reload?: () => Promise<void>;
 }
 
 /**
