@@ -12,8 +12,8 @@ export class BranchSummaryMessageComponent extends Box {
 	private message: BranchSummaryMessage;
 	private markdownTheme: MarkdownTheme;
 
-	constructor(message: BranchSummaryMessage, markdownTheme: MarkdownTheme = getMarkdownTheme()) {
-		super(1, 1, (t) => theme.bg("customMessageBg", t));
+	constructor(message: BranchSummaryMessage, markdownTheme: MarkdownTheme = getMarkdownTheme(), toolIndent = 1) {
+		super(toolIndent, 1, (t) => theme.bg("customMessageBg", t));
 		this.message = message;
 		this.markdownTheme = markdownTheme;
 		this.updateDisplay();

@@ -16,8 +16,8 @@ export class AssistantMessageComponent extends Container {
 	private hideThinkingBlock: boolean;
 	private markdownTheme: MarkdownTheme;
 	private hiddenThinkingLabel: string;
-	private outputPad: number;
 	private markdownTransformers: readonly MarkdownTransformer[];
+	private transcriptIndent: number;
 	private lastMessage?: AssistantMessage;
 	private hasToolCalls = false;
 	private isStreaming = false;
@@ -27,16 +27,16 @@ export class AssistantMessageComponent extends Container {
 		hideThinkingBlock = false,
 		markdownTheme: MarkdownTheme = getMarkdownTheme(),
 		hiddenThinkingLabel = "Thinking...",
-		outputPad = 1,
 		markdownTransformers: readonly MarkdownTransformer[] = [],
+		transcriptIndent = 1,
 	) {
 		super();
 
 		this.hideThinkingBlock = hideThinkingBlock;
 		this.markdownTheme = markdownTheme;
 		this.hiddenThinkingLabel = hiddenThinkingLabel;
-		this.outputPad = outputPad;
 		this.markdownTransformers = markdownTransformers;
+		this.transcriptIndent = transcriptIndent;
 
 		// Container for text/thinking content
 		this.contentContainer = new Container();
@@ -68,8 +68,8 @@ export class AssistantMessageComponent extends Container {
 		}
 	}
 
-	setOutputPad(padding: number): void {
-		this.outputPad = padding;
+	setTranscriptIndent(indent: number): void {
+		this.transcriptIndent = indent;
 		if (this.lastMessage) {
 			this.updateContent(this.lastMessage);
 		}
@@ -108,7 +108,7 @@ export class AssistantMessageComponent extends Container {
 				// Assistant text messages with no background - trim the text
 				// Set paddingY=0 to avoid extra spacing before tool executions
 				this.contentContainer.addChild(
-					new Markdown(content.text.trim(), this.outputPad, 0, this.markdownTheme, undefined, {
+					new Markdown(content.text.trim(), this.transcriptIndent, 0, this.markdownTheme, undefined, {
 						transform: createMarkdownTransform("assistant", this.isStreaming, this.markdownTransformers),
 					}),
 				);
@@ -139,14 +139,14 @@ export class AssistantMessageComponent extends Container {
 				if (this.hideThinkingBlock) {
 					// Show one static label for each run of thinking blocks when hidden.
 					this.contentContainer.addChild(
-						new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.outputPad, 0),
+						new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.transcriptIndent, 0),
 					);
 				} else {
 					// Render each run of thinking blocks as one Markdown section.
 					this.contentContainer.addChild(
 						new Markdown(
 							thinkingBlocks.join("\n\n"),
-							this.outputPad,
+							this.transcriptIndent,
 							0,
 							this.markdownTheme,
 							{
@@ -177,7 +177,7 @@ export class AssistantMessageComponent extends Container {
 		if (message.stopReason === "length") {
 			this.contentContainer.addChild(new Spacer(1));
 			this.contentContainer.addChild(
-				new Text(theme.fg("error", "Response was truncated before completion."), this.outputPad, 0),
+				new Text(theme.fg("error", "Response was truncated before completion."), this.transcriptIndent, 0),
 			);
 		} else if (!hasToolCalls) {
 			if (message.stopReason === "aborted") {
@@ -186,11 +186,11 @@ export class AssistantMessageComponent extends Container {
 						? message.errorMessage
 						: "Operation aborted";
 				this.contentContainer.addChild(new Spacer(1));
-				this.contentContainer.addChild(new Text(theme.fg("error", abortMessage), this.outputPad, 0));
+				this.contentContainer.addChild(new Text(theme.fg("error", abortMessage), this.transcriptIndent, 0));
 			} else if (message.stopReason === "error") {
 				const errorMsg = message.errorMessage || "Unknown error";
 				this.contentContainer.addChild(new Spacer(1));
-				this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), this.outputPad, 0));
+				this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), this.transcriptIndent, 0));
 			}
 		}
 	}

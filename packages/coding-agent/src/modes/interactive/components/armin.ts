@@ -68,9 +68,11 @@ export class ArminComponent implements Component {
 	private cachedWidth = 0;
 	private gridVersion = 0;
 	private cachedVersion = -1;
+	private toolIndent: number;
 
-	constructor(ui: TUI) {
+	constructor(ui: TUI, toolIndent = 1) {
 		this.ui = ui;
+		this.toolIndent = toolIndent;
 		this.effect = EFFECTS[Math.floor(Math.random() * EFFECTS.length)];
 		this.finalGrid = buildFinalGrid();
 		this.currentGrid = this.createEmptyGrid();
@@ -88,20 +90,21 @@ export class ArminComponent implements Component {
 			return this.cachedLines;
 		}
 
-		const padding = 1;
-		const availableWidth = width - padding;
+		const padding = this.toolIndent;
+		const leftPadding = " ".repeat(padding);
+		const availableWidth = Math.max(0, width - padding);
 
 		this.cachedLines = this.currentGrid.map((row) => {
 			// Clip row to available width before applying color
 			const clipped = row.slice(0, availableWidth).join("");
 			const padRight = Math.max(0, width - padding - clipped.length);
-			return ` ${theme.fg("accent", clipped)}${" ".repeat(padRight)}`;
+			return `${leftPadding}${theme.fg("accent", clipped)}${" ".repeat(padRight)}`;
 		});
 
 		// Add "ARMIN SAYS HI" at the end
 		const message = "ARMIN SAYS HI";
 		const msgPadRight = Math.max(0, width - padding - message.length);
-		this.cachedLines.push(` ${theme.fg("accent", message)}${" ".repeat(msgPadRight)}`);
+		this.cachedLines.push(`${leftPadding}${theme.fg("accent", message)}${" ".repeat(msgPadRight)}`);
 
 		this.cachedWidth = width;
 		this.cachedVersion = this.gridVersion;

@@ -67,6 +67,26 @@ describe("ToolExecutionComponent parity", () => {
 		expect(rendered).toContain("custom result");
 	});
 
+	test("applies tool indentation to default tool shells and render contexts", () => {
+		const toolDefinition: ToolDefinition = {
+			...createBaseToolDefinition(),
+			renderCall: (_args, _theme, context) => new Text(`indent:${context.toolIndent}`, 0, 0),
+		};
+
+		const component = new ToolExecutionComponent(
+			"custom_tool",
+			"tool-indent",
+			{},
+			{ toolIndent: 4 },
+			toolDefinition,
+			createFakeTui(),
+			process.cwd(),
+		);
+
+		const contentLine = stripAnsi(component.render(40).find((line) => line.includes("indent:")) ?? "").trimEnd();
+		expect(contentLine).toBe("    indent:4");
+	});
+
 	test("self-rendered empty tool rows take no layout space", () => {
 		const toolDefinition: ToolDefinition = {
 			...createBaseToolDefinition(),

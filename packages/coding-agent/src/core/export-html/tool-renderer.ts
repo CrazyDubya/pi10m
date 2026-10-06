@@ -20,6 +20,8 @@ export interface ToolHtmlRendererDeps {
 	cwd: string;
 	/** Terminal width for rendering (default: 100) */
 	width?: number;
+	/** Tool indentation to expose to custom tool renderers (default: 1) */
+	toolIndent?: number;
 }
 
 export interface ToolHtmlRenderer {
@@ -56,7 +58,7 @@ function trimRenderedResultLines(lines: string[]): string[] {
 }
 
 export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRenderer {
-	const { getToolDefinition, theme, cwd, width = 100 } = deps;
+	const { getToolDefinition, theme, cwd, width = 100, toolIndent = 1 } = deps;
 
 	const renderedCallComponents = new Map<string, Component>();
 	const renderedResultComponents = new Map<string, Component>();
@@ -91,6 +93,7 @@ export function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRend
 			isPartial,
 			expanded,
 			showImages: false,
+			toolIndent,
 			isError,
 		};
 	};

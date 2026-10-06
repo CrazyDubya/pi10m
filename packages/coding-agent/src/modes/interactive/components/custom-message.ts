@@ -16,24 +16,24 @@ export class CustomMessageComponent extends Container {
 	private customComponent?: Component;
 	private markdownTheme: MarkdownTheme;
 	private _expanded = false;
-	private outputPad: number;
+	private toolIndent: number;
 
 	constructor(
 		message: CustomMessage<unknown>,
 		customRenderer?: MessageRenderer,
 		markdownTheme: MarkdownTheme = getMarkdownTheme(),
-		outputPad = 1,
+		toolIndent = 1,
 	) {
 		super();
 		this.message = message;
 		this.customRenderer = customRenderer;
 		this.markdownTheme = markdownTheme;
-		this.outputPad = outputPad;
+		this.toolIndent = toolIndent;
 
 		this.addChild(new Spacer(1));
 
 		// Create box with purple background (used for default rendering)
-		this.box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
+		this.box = new Box(toolIndent, 1, (t) => theme.bg("customMessageBg", t));
 
 		this.rebuild();
 	}
@@ -45,9 +45,9 @@ export class CustomMessageComponent extends Container {
 		}
 	}
 
-	setOutputPad(outputPad: number): void {
-		if (this.outputPad !== outputPad) {
-			this.outputPad = outputPad;
+	setTranscriptIndent(indent: number): void {
+		if (this.toolIndent !== indent) {
+			this.toolIndent = indent;
 			this.rebuild();
 		}
 	}
@@ -70,7 +70,7 @@ export class CustomMessageComponent extends Container {
 			try {
 				const component = this.customRenderer(
 					this.message,
-					{ expanded: this._expanded, outputPad: this.outputPad },
+					{ expanded: this._expanded, outputPad: this.toolIndent },
 					theme,
 				);
 				if (component) {

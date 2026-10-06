@@ -80,6 +80,15 @@ export type DefaultProjectTrust = "ask" | "always" | "never";
 
 export type TransportSetting = Transport;
 
+export const INDENT_VALUES = [0, 1, 2, 3, 4] as const;
+
+function normalizeIndent(value: unknown): number {
+	if (typeof value !== "number" || !Number.isInteger(value)) {
+		return 1;
+	}
+	return INDENT_VALUES.includes(value as (typeof INDENT_VALUES)[number]) ? value : 1;
+}
+
 /**
  * Package source for npm/git packages.
  * - String form: load all resources from the package
@@ -137,6 +146,8 @@ export interface Settings {
 	outputPad?: 0 | 1; // Horizontal padding for chat message output (default: 1)
 	autocompleteMaxVisible?: number; // Max visible items in autocomplete dropdown (default: 5)
 	showHardwareCursor?: HardwareCursorSetting; // boolean keeps both cursors; "native" shows only the hardware cursor
+	transcriptIndent?: number; // Horizontal padding for assistant transcript text (default: 1; allowed: 0-4)
+	toolIndent?: number; // Horizontal padding for tool and message blocks (default: 1; allowed: 0-4)
 	markdown?: MarkdownSettings;
 	warnings?: WarningSettings;
 	piDev?: PiDevSettings;
@@ -1263,6 +1274,26 @@ export class SettingsManager {
 	setOutputPad(padding: 0 | 1): void {
 		this.globalSettings.outputPad = padding;
 		this.markModified("outputPad");
+		this.save();
+	}
+
+	getTranscriptIndent(): number {
+		return normalizeIndent(this.settings.transcriptIndent);
+	}
+
+	setTranscriptIndent(indent: number): void {
+		this.globalSettings.transcriptIndent = normalizeIndent(indent);
+		this.markModified("transcriptIndent");
+		this.save();
+	}
+
+	getToolIndent(): number {
+		return normalizeIndent(this.settings.toolIndent);
+	}
+
+	setToolIndent(indent: number): void {
+		this.globalSettings.toolIndent = normalizeIndent(indent);
+		this.markModified("toolIndent");
 		this.save();
 	}
 

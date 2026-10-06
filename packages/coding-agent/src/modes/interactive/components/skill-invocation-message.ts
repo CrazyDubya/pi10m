@@ -13,8 +13,8 @@ export class SkillInvocationMessageComponent extends Box {
 	private skillBlock: ParsedSkillBlock;
 	private markdownTheme: MarkdownTheme;
 
-	constructor(skillBlock: ParsedSkillBlock, markdownTheme: MarkdownTheme = getMarkdownTheme()) {
-		super(1, 1, (t) => theme.bg("customMessageBg", t));
+	constructor(skillBlock: ParsedSkillBlock, markdownTheme: MarkdownTheme = getMarkdownTheme(), toolIndent = 1) {
+		super(toolIndent, 1, (t) => theme.bg("customMessageBg", t));
 		this.skillBlock = skillBlock;
 		this.markdownTheme = markdownTheme;
 		this.updateDisplay();

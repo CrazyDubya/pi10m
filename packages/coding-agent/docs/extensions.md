@@ -2219,6 +2219,7 @@ pi.registerTool({
 - `lastComponent` - the previously returned component for that slot, if any
 - `invalidate()` - request a rerender of this tool row
 - `toolCallId`, `cwd`, `executionStarted`, `argsComplete`, `isPartial`, `expanded`, `showImages`, `isError`
+- `toolIndent` - current tool/message indentation in terminal columns; default shells apply it automatically, self-shell renderers can opt in (use `context.toolIndent ?? 1`)
 
 Use `context.state` for cross-slot shared state. Keep slot-local caches on the returned component instance when you want to reuse and mutate the same component across renders.
 
@@ -2299,6 +2300,7 @@ Custom editors and `ctx.ui.custom()` components receive `keybindings: Keybinding
 #### Best Practices
 
 - Use `Text` with padding `(0, 0)`. The default Box handles padding.
+- Use `context.toolIndent` only when `renderShell: "self"` needs to align with the user's tool indentation setting.
 - Use `\n` for multi-line content.
 - Handle `isPartial` for streaming progress.
 - Support `expanded` for detail on demand.

@@ -31,7 +31,7 @@ describe("CustomMessageComponent", () => {
 				.some((line) => line.startsWith(" custom")),
 		).toBe(true);
 
-		component.setOutputPad(0);
+		component.setTranscriptIndent(0);
 
 		expect(optionsSeen.at(-1)).toEqual({ expanded: false, outputPad: 0 });
 		expect(

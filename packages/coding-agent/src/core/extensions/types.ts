@@ -442,6 +442,8 @@ export interface ToolRenderContext<TState = any, TArgs = any> {
 	expanded: boolean;
 	/** Whether inline images are currently shown in the TUI. */
 	showImages: boolean;
+	/** Current tool/message indentation in terminal columns. Core-owned shells apply it automatically. */
+	toolIndent?: number;
 	/** Whether the current result is an error. */
 	isError: boolean;
 	/** True when renderCall is producing a collapsed grouped-tool summary. */

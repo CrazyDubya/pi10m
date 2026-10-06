@@ -25,14 +25,17 @@ function loadImageBase64(): string | undefined {
 }
 
 export class EarendilAnnouncementComponent extends Container {
-	constructor() {
+	constructor(toolIndent = 1) {
 		super();
+		const addText = (content: string) => {
+			this.addChild(new Text(content, toolIndent, 0));
+		};
 
 		this.addChild(new DynamicBorder((text) => theme.fg("accent", text)));
-		this.addChild(new Text(theme.bold(theme.fg("accent", "pi has joined Earendil")), 1, 0));
+		addText(theme.bold(theme.fg("accent", "pi has joined Earendil")));
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("muted", "Read the blog post:"), 1, 0));
-		this.addChild(new Text(theme.fg("mdLink", BLOG_URL), 1, 0));
+		addText(theme.fg("muted", "Read the blog post:"));
+		addText(theme.fg("mdLink", BLOG_URL));
 		this.addChild(new Spacer(1));
 
 		const imageBase64 = loadImageBase64();

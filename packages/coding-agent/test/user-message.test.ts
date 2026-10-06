@@ -27,7 +27,7 @@ describe("UserMessageComponent", () => {
 	test("chains Markdown transformers with user message context", () => {
 		initTheme("dark");
 		const calls: string[] = [];
-		const component = new UserMessageComponent("The input is $x^2$.", undefined, 1, [
+		const component = new UserMessageComponent("The input is $x^2$.", undefined, [
 			(markdown, context) => {
 				calls.push("formula");
 				expect(context).toEqual({ messageType: "user", isStreaming: false, availableWidth: 78 });
@@ -46,7 +46,7 @@ describe("UserMessageComponent", () => {
 	test("reapplies Markdown transformers when invalidated", () => {
 		initTheme("dark");
 		let suffix = "before";
-		const component = new UserMessageComponent("Message", undefined, 1, [(markdown) => `${markdown} ${suffix}`]);
+		const component = new UserMessageComponent("Message", undefined, [(markdown) => `${markdown} ${suffix}`]);
 
 		expect(stripAnsi(component.render(80).join("\n"))).toContain("Message before");
 

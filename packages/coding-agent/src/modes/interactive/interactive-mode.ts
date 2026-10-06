@@ -13,10 +13,12 @@ import type { AssistantMessage, ImageContent, Message, Model } from "@earendil-w
 import type {
 	AutocompleteItem,
 	AutocompleteProvider,
+	DefaultTextStyle,
 	EditorComponent,
 	HardwareCursorSetting,
 	Keybinding,
 	KeyId,
+	MarkdownOptions,
 	MarkdownTheme,
 	OverlayHandle,
 	OverlayOptions,
@@ -793,13 +795,11 @@ export class InteractiveMode {
 			const versionMatch = this.changelogMarkdown.match(/##\s+\[?(\d+\.\d+\.\d+)\]?/);
 			const latestVersion = versionMatch ? versionMatch[1] : this.version;
 			const condensedText = `Updated to v${latestVersion}. Use ${theme.bold("/changelog")} to view full changelog.`;
-			this.chatContainer.addChild(new Text(condensedText, 1, 0));
+			this.chatContainer.addChild(this.createToolText(condensedText));
 		} else {
-			this.chatContainer.addChild(new Text(theme.bold(theme.fg("accent", "What's New")), 1, 0));
+			this.chatContainer.addChild(this.createToolText(theme.bold(theme.fg("accent", "What's New"))));
 			this.chatContainer.addChild(new Spacer(1));
-			this.chatContainer.addChild(
-				new Markdown(this.changelogMarkdown.trim(), 1, 0, this.getMarkdownThemeWithSettings()),
-			);
+			this.chatContainer.addChild(this.createToolMarkdown(this.changelogMarkdown.trim()));
 			this.chatContainer.addChild(new Spacer(1));
 		}
 		this.chatContainer.addChild(new DynamicBorder());
@@ -1265,6 +1265,38 @@ export class InteractiveMode {
 			...getMarkdownTheme(),
 			codeBlockIndent: this.settingsManager.getCodeBlockIndent(),
 		};
+	}
+
+	private getTranscriptIndent(): number {
+		return this.settingsManager.getTranscriptIndent();
+	}
+
+	private getToolIndent(): number {
+		return this.settingsManager.getToolIndent();
+	}
+
+	private createToolText(text: string, paddingY = 0, customBgFn?: (text: string) => string): Text {
+		return new Text(text, this.getToolIndent(), paddingY, customBgFn);
+	}
+
+	private createToolMarkdown(
+		text: string,
+		paddingY = 0,
+		defaultTextStyle?: DefaultTextStyle,
+		options?: MarkdownOptions,
+	): Markdown {
+		return new Markdown(
+			text,
+			this.getToolIndent(),
+			paddingY,
+			this.getMarkdownThemeWithSettings(),
+			defaultTextStyle,
+			options,
+		);
+	}
+
+	private createToolTruncatedText(text: string, paddingY = 0): TruncatedText {
+		return new TruncatedText(text, this.getToolIndent(), paddingY);
 	}
 
 	// =========================================================================
@@ -2827,7 +2859,7 @@ export class InteractiveMode {
 	 */
 	private showExtensionError(extensionPath: string, error: string, stack?: string): void {
 		const errorMsg = `Extension "${extensionPath}" error: ${error}`;
-		const errorText = new Text(theme.fg("error", errorMsg), 1, 0);
+		const errorText = this.createToolText(theme.fg("error", errorMsg));
 		this.chatContainer.addChild(errorText);
 		if (stack) {
 			// Show stack trace in dim color, indented
@@ -2837,7 +2869,7 @@ export class InteractiveMode {
 				.map((line) => theme.fg("dim", `  ${line.trim()}`))
 				.join("\n");
 			if (stackLines) {
-				this.chatContainer.addChild(new Text(stackLines, 1, 0));
+				this.chatContainer.addChild(this.createToolText(stackLines));
 			}
 		}
 		this.ui.requestRender();
@@ -3232,8 +3264,8 @@ export class InteractiveMode {
 						this.hideThinkingBlock,
 						this.getMarkdownThemeWithSettings(),
 						this.hiddenThinkingLabel,
-						this.outputPad,
 						this.getMarkdownTransformers(),
+						this.getTranscriptIndent(),
 					);
 					this.streamingMessage = event.message;
 					this.chatContainer.addChild(this.streamingComponent);
@@ -3408,7 +3440,7 @@ export class InteractiveMode {
 						this.showError(event.errorMessage);
 					} else {
 						this.chatContainer.addChild(new Spacer(1));
-						this.chatContainer.addChild(new Text(theme.fg("error", event.errorMessage), 1, 0));
+						this.chatContainer.addChild(this.createToolText(theme.fg("error", event.errorMessage)));
 					}
 				}
 				void this.flushCompactionQueue({ willRetry: event.willRetry });
@@ -3500,7 +3532,7 @@ export class InteractiveMode {
 		}
 
 		const spacer = new Spacer(1);
-		const text = new Text(theme.fg("dim", message), 1, 0);
+		const text = this.createToolText(theme.fg("dim", message));
 		this.chatContainer.addChild(spacer);
 		this.chatContainer.addChild(text);
 		this.lastStatusSpacer = spacer;
@@ -3533,7 +3565,12 @@ export class InteractiveMode {
 	private addMessageToChat(message: AgentMessage, options?: { populateHistory?: boolean }): void {
 		switch (message.role) {
 			case "bashExecution": {
-				const component = new BashExecutionComponent(message.command, this.ui, message.excludeFromContext);
+				const component = new BashExecutionComponent(
+					message.command,
+					this.ui,
+					message.excludeFromContext,
+					this.getToolIndent(),
+				);
 				if (message.output) {
 					component.appendOutput(message.output);
 				}
@@ -3562,14 +3599,22 @@ export class InteractiveMode {
 			}
 			case "compactionSummary": {
 				this.chatContainer.addChild(new Spacer(1));
-				const component = new CompactionSummaryMessageComponent(message, this.getMarkdownThemeWithSettings());
+				const component = new CompactionSummaryMessageComponent(
+					message,
+					this.getMarkdownThemeWithSettings(),
+					this.getToolIndent(),
+				);
 				component.setExpanded(this.toolOutputExpanded);
 				this.chatContainer.addChild(component);
 				break;
 			}
 			case "branchSummary": {
 				this.chatContainer.addChild(new Spacer(1));
-				const component = new BranchSummaryMessageComponent(message, this.getMarkdownThemeWithSettings());
+				const component = new BranchSummaryMessageComponent(
+					message,
+					this.getMarkdownThemeWithSettings(),
+					this.getToolIndent(),
+				);
 				component.setExpanded(this.toolOutputExpanded);
 				this.chatContainer.addChild(component);
 				break;
@@ -3586,6 +3631,7 @@ export class InteractiveMode {
 						const component = new SkillInvocationMessageComponent(
 							skillBlock,
 							this.getMarkdownThemeWithSettings(),
+							this.getToolIndent(),
 						);
 						component.setExpanded(this.toolOutputExpanded);
 						this.chatContainer.addChild(component);
@@ -3595,8 +3641,8 @@ export class InteractiveMode {
 							const userComponent = new UserMessageComponent(
 								skillBlock.userMessage,
 								this.getMarkdownThemeWithSettings(),
-								this.outputPad,
 								this.getMarkdownTransformers(),
+								this.getTranscriptIndent(),
 							);
 							this.chatContainer.addChild(userComponent);
 						}
@@ -3604,8 +3650,8 @@ export class InteractiveMode {
 						const userComponent = new UserMessageComponent(
 							textContent,
 							this.getMarkdownThemeWithSettings(),
-							this.outputPad,
 							this.getMarkdownTransformers(),
+							this.getTranscriptIndent(),
 						);
 						this.chatContainer.addChild(userComponent);
 					}
@@ -3621,8 +3667,8 @@ export class InteractiveMode {
 					this.hideThinkingBlock,
 					this.getMarkdownThemeWithSettings(),
 					this.hiddenThinkingLabel,
-					this.outputPad,
 					this.getMarkdownTransformers(),
+					this.getTranscriptIndent(),
 				);
 				this.chatContainer.addChild(assistantComponent);
 				break;
@@ -3800,13 +3846,11 @@ export class InteractiveMode {
 			this.chatContainer.addChild(new Spacer(1));
 		}
 		this.chatContainer.addChild(
-			new Text(
+			this.createToolText(
 				theme.fg(
 					"warning",
 					`This project is not trusted. Project ${CONFIG_DIR_NAME} resources and packages are ignored. Use /trust to save a trust decision, then restart pi.`,
 				),
-				1,
-				0,
 			),
 		);
 	}
@@ -4184,7 +4228,7 @@ export class InteractiveMode {
 
 	showWarning(warningMessage: string): void {
 		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new Text(theme.fg("warning", `Warning: ${warningMessage}`), 1, 0));
+		this.chatContainer.addChild(this.createToolText(theme.fg("warning", `Warning: ${warningMessage}`)));
 		this.ui.requestRender();
 	}
 
@@ -4211,13 +4255,13 @@ export class InteractiveMode {
 		if (note) {
 			this.chatContainer.addChild(new Spacer(1));
 			this.chatContainer.addChild(
-				new Markdown(note, 1, 0, this.getMarkdownThemeWithSettings(), {
+				this.createToolMarkdown(note, 0, {
 					color: (text) => theme.fg("muted", text),
 				}),
 			);
 			this.chatContainer.addChild(new Spacer(1));
 		}
-		this.chatContainer.addChild(new Text(changelogLine, 1, 0));
+		this.chatContainer.addChild(this.createToolText(changelogLine));
 		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
 		this.ui.requestRender();
 	}
@@ -4230,10 +4274,8 @@ export class InteractiveMode {
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
 		this.chatContainer.addChild(
-			new Text(
+			this.createToolText(
 				`${theme.bold(theme.fg("warning", "Package Updates Available"))}\n${updateInstruction}\n${theme.fg("muted", "Packages:")}\n${packageLines}`,
-				1,
-				0,
 			),
 		);
 		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
@@ -4283,15 +4325,15 @@ export class InteractiveMode {
 			this.pendingMessagesContainer.addChild(new Spacer(1));
 			for (const message of steeringMessages) {
 				const text = theme.fg("dim", `Steering: ${message}`);
-				this.pendingMessagesContainer.addChild(new TruncatedText(text, 1, 0));
+				this.pendingMessagesContainer.addChild(this.createToolTruncatedText(text));
 			}
 			for (const message of followUpMessages) {
 				const text = theme.fg("dim", `Follow-up: ${message}`);
-				this.pendingMessagesContainer.addChild(new TruncatedText(text, 1, 0));
+				this.pendingMessagesContainer.addChild(this.createToolTruncatedText(text));
 			}
 			const dequeueHint = this.getAppKeyDisplay("app.message.dequeue");
 			const hintText = theme.fg("dim", `↳ ${dequeueHint} to edit all queued messages`);
-			this.pendingMessagesContainer.addChild(new TruncatedText(hintText, 1, 0));
+			this.pendingMessagesContainer.addChild(this.createToolTruncatedText(hintText));
 		}
 	}
 
@@ -4562,12 +4604,6 @@ export class InteractiveMode {
 					onHideThinkingBlockChange: (hidden) => {
 						this.hideThinkingBlock = hidden;
 						this.settingsManager.setHideThinkingBlock(hidden);
-						for (const child of this.chatContainer.children) {
-							if (child instanceof AssistantMessageComponent) {
-								child.setHideThinkingBlock(hidden);
-							}
-						}
-						this.chatContainer.clear();
 						this.rebuildChatFromMessages();
 					},
 					onMermaidRenderingModeChange: (mode) => {
@@ -4621,11 +4657,11 @@ export class InteractiveMode {
 									child instanceof CustomMessageComponent ||
 									child instanceof UserMessageComponent
 								) {
-									child.setOutputPad(padding);
+									child.setTranscriptIndent(padding);
 								}
 							}
 							if (this.streamingComponent) {
-								this.streamingComponent.setOutputPad(padding);
+								this.streamingComponent.setTranscriptIndent(padding);
 							}
 							this.ui.requestRender();
 							return;
@@ -6392,7 +6428,7 @@ export class InteractiveMode {
 			const currentName = this.sessionManager.getSessionName();
 			if (currentName) {
 				this.chatContainer.addChild(new Spacer(1));
-				this.chatContainer.addChild(new Text(theme.fg("dim", `Session name: ${currentName}`), 1, 0));
+				this.chatContainer.addChild(this.createToolText(theme.fg("dim", `Session name: ${currentName}`)));
 			} else {
 				this.showWarning("Usage: /name <name>");
 			}
@@ -6406,7 +6442,7 @@ export class InteractiveMode {
 			this.showWarning(`Session name was normalized from ${JSON.stringify(name)} to ${JSON.stringify(sessionName)}`);
 		}
 		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new Text(theme.fg("dim", `Session name set: ${sessionName ?? name}`), 1, 0));
+		this.chatContainer.addChild(this.createToolText(theme.fg("dim", `Session name set: ${sessionName ?? name}`)));
 		this.ui.requestRender();
 	}
 
@@ -6469,7 +6505,7 @@ export class InteractiveMode {
 		}
 
 		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new Text(info, 1, 0));
+		this.chatContainer.addChild(this.createToolText(info));
 		this.ui.requestRender();
 	}
 
@@ -6487,9 +6523,9 @@ export class InteractiveMode {
 
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(new DynamicBorder());
-		this.chatContainer.addChild(new Text(theme.bold(theme.fg("accent", "What's New")), 1, 0));
+		this.chatContainer.addChild(this.createToolText(theme.bold(theme.fg("accent", "What's New"))));
 		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new Markdown(changelogMarkdown, 1, 1, this.getMarkdownThemeWithSettings()));
+		this.chatContainer.addChild(this.createToolMarkdown(changelogMarkdown, 1));
 		this.chatContainer.addChild(new DynamicBorder());
 		this.ui.requestRender();
 	}
@@ -6618,9 +6654,9 @@ export class InteractiveMode {
 
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(new DynamicBorder());
-		this.chatContainer.addChild(new Text(theme.bold(theme.fg("accent", "Keyboard Shortcuts")), 1, 0));
+		this.chatContainer.addChild(this.createToolText(theme.bold(theme.fg("accent", "Keyboard Shortcuts"))));
 		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new Markdown(hotkeys.trim(), 1, 1, this.getMarkdownThemeWithSettings()));
+		this.chatContainer.addChild(this.createToolMarkdown(hotkeys.trim(), 1));
 		this.chatContainer.addChild(new DynamicBorder());
 		this.ui.requestRender();
 	}
@@ -6633,7 +6669,7 @@ export class InteractiveMode {
 				return;
 			}
 			this.chatContainer.addChild(new Spacer(1));
-			this.chatContainer.addChild(new Text(`${theme.fg("accent", "✓ New session started")}`, 1, 1));
+			this.chatContainer.addChild(this.createToolText(`${theme.fg("accent", "✓ New session started")}`, 1));
 			this.ui.requestRender();
 		} catch (error: unknown) {
 			await this.handleFatalRuntimeError("Failed to create session", error);
@@ -6668,20 +6704,20 @@ export class InteractiveMode {
 
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(
-			new Text(`${theme.fg("accent", "✓ Debug log written")}\n${theme.fg("muted", debugLogPath)}`, 1, 1),
+			this.createToolText(`${theme.fg("accent", "✓ Debug log written")}\n${theme.fg("muted", debugLogPath)}`, 1),
 		);
 		this.ui.requestRender();
 	}
 
 	private handleArminSaysHi(): void {
 		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new ArminComponent(this.ui));
+		this.chatContainer.addChild(new ArminComponent(this.ui, this.getToolIndent()));
 		this.ui.requestRender();
 	}
 
 	private handleDementedDelves(): void {
 		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new EarendilAnnouncementComponent());
+		this.chatContainer.addChild(new EarendilAnnouncementComponent(this.getToolIndent()));
 		this.ui.requestRender();
 	}
 
@@ -6711,7 +6747,7 @@ export class InteractiveMode {
 			const result = eventResult.result;
 
 			// Create UI component for display
-			this.bashComponent = new BashExecutionComponent(command, this.ui, excludeFromContext);
+			this.bashComponent = new BashExecutionComponent(command, this.ui, excludeFromContext, this.getToolIndent());
 			if (this.session.isStreaming) {
 				this.pendingMessagesContainer.addChild(this.bashComponent);
 				this.pendingBashComponents.push(this.bashComponent);
@@ -6739,7 +6775,7 @@ export class InteractiveMode {
 
 		// Normal execution path (possibly with custom operations)
 		const isDeferred = this.session.isStreaming;
-		this.bashComponent = new BashExecutionComponent(command, this.ui, excludeFromContext);
+		this.bashComponent = new BashExecutionComponent(command, this.ui, excludeFromContext, this.getToolIndent());
 
 		if (isDeferred) {
 			// Show in pending area when agent is streaming

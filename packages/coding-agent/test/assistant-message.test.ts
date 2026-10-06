@@ -102,6 +102,7 @@ describe("AssistantMessageComponent", () => {
 			false,
 			undefined,
 			"Thinking...",
+			[],
 			1,
 		);
 		const lines = component.render(80).map((line) => stripAnsi(line));
@@ -109,7 +110,7 @@ describe("AssistantMessageComponent", () => {
 		expect(lines.some((line) => line.includes(" hello"))).toBe(true);
 		expect(lines.some((line) => line.includes(" reasoning"))).toBe(true);
 
-		component.setOutputPad(0);
+		component.setTranscriptIndent(0);
 		const updatedLines = component.render(80).map((line) => stripAnsi(line));
 		expect(updatedLines.some((line) => line.startsWith("hello"))).toBe(true);
 		expect(updatedLines.some((line) => line.startsWith("reasoning"))).toBe(true);
@@ -119,7 +120,7 @@ describe("AssistantMessageComponent", () => {
 		initTheme("dark");
 		const calls: string[] = [];
 		const message = createAssistantMessage([{ type: "text", text: "The result is $x^2$." }]);
-		const component = new AssistantMessageComponent(message, false, undefined, "Thinking...", 1, [
+		const component = new AssistantMessageComponent(message, false, undefined, "Thinking...", [
 			(markdown, context) => {
 				calls.push("formula");
 				expect(context).toEqual({ messageType: "assistant", isStreaming: false, availableWidth: 78 });
@@ -139,7 +140,7 @@ describe("AssistantMessageComponent", () => {
 		initTheme("dark");
 		const streamingStates: boolean[] = [];
 		const message = createAssistantMessage([{ type: "text", text: "partial" }]);
-		const component = new AssistantMessageComponent(undefined, false, undefined, "Thinking...", 1, [
+		const component = new AssistantMessageComponent(undefined, false, undefined, "Thinking...", [
 			(markdown, context) => {
 				streamingStates.push(context.isStreaming);
 				return context.isStreaming ? markdown : `${markdown} transformed`;
@@ -161,9 +162,7 @@ describe("AssistantMessageComponent", () => {
 			createAssistantMessage([{ type: "text", text: "answer" }]),
 			false,
 			undefined,
-			"Thinking...",
-			1,
-			[
+			"Thinking...", [
 				(markdown, context) => {
 					availableWidths.push(context.availableWidth);
 					return `${markdown} (${context.availableWidth})`;
@@ -184,9 +183,7 @@ describe("AssistantMessageComponent", () => {
 			createAssistantMessage([{ type: "text", text: "still visible" }]),
 			false,
 			undefined,
-			"Thinking...",
-			1,
-			[
+			"Thinking...", [
 				(markdown) => {
 					calls.push("first");
 					return markdown.replace("still", "remains");
@@ -212,7 +209,7 @@ describe("AssistantMessageComponent", () => {
 			{ type: "text", text: "answer" },
 			{ type: "thinking", thinking: "reasoning" },
 		]);
-		const component = new AssistantMessageComponent(message, false, undefined, "Thinking...", 1, [
+		const component = new AssistantMessageComponent(message, false, undefined, "Thinking...", [
 			(markdown, { messageType }) => {
 				return `${messageType}:${markdown}`;
 			},
@@ -230,11 +227,11 @@ describe("AssistantMessageComponent", () => {
 	test("uses configured output padding for user messages", () => {
 		initTheme("dark");
 
-		const paddedComponent = new UserMessageComponent("hello", undefined, 1);
+		const paddedComponent = new UserMessageComponent("hello", undefined, [], 1);
 		const paddedLines = paddedComponent.render(40).map((line) => stripAnsi(line));
 		expect(paddedLines.some((line) => line.startsWith(" hello"))).toBe(true);
 
-		const unpaddedComponent = new UserMessageComponent("hello", undefined, 0);
+		const unpaddedComponent = new UserMessageComponent("hello", undefined, [], 0);
 		const unpaddedLines = unpaddedComponent.render(40).map((line) => stripAnsi(line));
 		expect(unpaddedLines.some((line) => line.startsWith("hello"))).toBe(true);
 	});

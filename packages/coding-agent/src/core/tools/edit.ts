@@ -154,8 +154,8 @@ type EditCallRenderComponent = Box & {
 	settledError?: boolean;
 };
 
-function createEditCallRenderComponent(): EditCallRenderComponent {
-	return Object.assign(new Box(1, 1, (text: string) => text), {
+function createEditCallRenderComponent(toolIndent: number): EditCallRenderComponent {
+	return Object.assign(new Box(toolIndent, 1, (text: string) => text), {
 		preview: undefined as EditPreview | undefined,
 		previewArgsKey: undefined as string | undefined,
 		previewPending: false,
@@ -163,7 +163,11 @@ function createEditCallRenderComponent(): EditCallRenderComponent {
 	});
 }
 
-function getEditCallRenderComponent(state: EditRenderState, lastComponent: unknown): EditCallRenderComponent {
+function getEditCallRenderComponent(
+	state: EditRenderState,
+	lastComponent: unknown,
+	toolIndent: number,
+): EditCallRenderComponent {
 	if (lastComponent instanceof Box) {
 		const component = lastComponent as EditCallRenderComponent;
 		state.callComponent = component;
@@ -172,7 +176,7 @@ function getEditCallRenderComponent(state: EditRenderState, lastComponent: unkno
 	if (state.callComponent) {
 		return state.callComponent;
 	}
-	const component = createEditCallRenderComponent();
+	const component = createEditCallRenderComponent(toolIndent);
 	state.callComponent = component;
 	return component;
 }
@@ -365,7 +369,8 @@ export function createEditToolDefinition(
 			});
 		},
 		renderCall(args, theme, context) {
-			const component = getEditCallRenderComponent(context.state, context.lastComponent);
+			const toolIndent = context.toolIndent ?? 1;
+			const component = getEditCallRenderComponent(context.state, context.lastComponent, toolIndent);
 			const previewInput = getRenderablePreviewInput(args as RenderableEditArgs | undefined);
 			const argsKey = previewInput
 				? JSON.stringify({ path: previewInput.path, edits: previewInput.edits })
@@ -430,7 +435,7 @@ export function createEditToolDefinition(
 				return component;
 			}
 			component.addChild(new Spacer(1));
-			component.addChild(new Text(output, 1, 0));
+			component.addChild(new Text(output, context.toolIndent ?? 1, 0));
 			return component;
 		},
 	};
