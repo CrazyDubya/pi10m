@@ -27,7 +27,7 @@ describe("UserMessageComponent", () => {
 	test("chains Markdown transformers with user message context", () => {
 		initTheme("dark");
 		const calls: string[] = [];
-		const component = new UserMessageComponent("The input is $x^2$.", undefined, [
+		const component = new UserMessageComponent("The input is $x^2$.", undefined, 1, [
 			(markdown, context) => {
 				calls.push("formula");
 				expect(context).toEqual({ messageType: "user", isStreaming: false, availableWidth: 78 });
@@ -46,7 +46,7 @@ describe("UserMessageComponent", () => {
 	test("reapplies Markdown transformers when invalidated", () => {
 		initTheme("dark");
 		let suffix = "before";
-		const component = new UserMessageComponent("Message", undefined, [(markdown) => `${markdown} ${suffix}`]);
+		const component = new UserMessageComponent("Message", undefined, 1, [(markdown) => `${markdown} ${suffix}`]);
 
 		expect(stripAnsi(component.render(80).join("\n"))).toContain("Message before");
 
@@ -54,5 +54,22 @@ describe("UserMessageComponent", () => {
 		component.invalidate();
 
 		expect(stripAnsi(component.render(80).join("\n"))).toContain("Message after");
+	});
+
+	test("passes persisted entry identity in transformer context; live leaves it undefined", () => {
+		initTheme("dark");
+		const captured: Array<{ messageId?: string; timestamp?: string }> = [];
+		const capture = (_markdown: string, context: { messageId?: string; timestamp?: string }) => {
+			captured.push({ messageId: context.messageId, timestamp: context.timestamp });
+			return _markdown;
+		};
+
+		new UserMessageComponent("restored", undefined, 1, [capture], "entry-abc", "2025-01-15T10:30:00.000Z").render(80);
+		new UserMessageComponent("live", undefined, 1, [capture]).render(80);
+
+		expect(captured).toEqual([
+			{ messageId: "entry-abc", timestamp: "2025-01-15T10:30:00.000Z" },
+			{ messageId: undefined, timestamp: undefined },
+		]);
 	});
 });

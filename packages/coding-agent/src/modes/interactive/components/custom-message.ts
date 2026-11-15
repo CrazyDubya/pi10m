@@ -1,9 +1,11 @@
 import type { TextContent } from "@earendil-works/pi-ai";
 import type { Component } from "@earendil-works/pi-tui";
 import { Box, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@earendil-works/pi-tui";
-import type { MessageRenderer } from "../../../core/extensions/types.ts";
+import type { MarkdownTransformer, MessageRenderer } from "../../../core/extensions/types.ts";
 import type { CustomMessage } from "../../../core/messages.ts";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import { keyHint, keyText } from "./keybinding-hints.ts";
+import { createMarkdownTransform } from "./markdown-transform.ts";
 
 /**
  * Component that renders a custom message entry from extensions.
@@ -16,24 +18,33 @@ export class CustomMessageComponent extends Container {
 	private customComponent?: Component;
 	private markdownTheme: MarkdownTheme;
 	private _expanded = false;
-	private toolIndent: number;
+	private outputPad: number;
+	private markdownTransformers: readonly MarkdownTransformer[];
+	private messageId?: string;
+	private timestamp?: string;
 
 	constructor(
 		message: CustomMessage<unknown>,
 		customRenderer?: MessageRenderer,
 		markdownTheme: MarkdownTheme = getMarkdownTheme(),
-		toolIndent = 1,
+		outputPad = 1,
+		markdownTransformers: readonly MarkdownTransformer[] = [],
+		messageId?: string,
+		timestamp?: string,
 	) {
 		super();
 		this.message = message;
 		this.customRenderer = customRenderer;
 		this.markdownTheme = markdownTheme;
-		this.toolIndent = toolIndent;
+		this.outputPad = outputPad;
+		this.markdownTransformers = markdownTransformers;
+		this.messageId = messageId;
+		this.timestamp = timestamp;
 
 		this.addChild(new Spacer(1));
 
 		// Create box with purple background (used for default rendering)
-		this.box = new Box(toolIndent, 1, (t) => theme.bg("customMessageBg", t));
+		this.box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
 
 		this.rebuild();
 	}
@@ -45,9 +56,9 @@ export class CustomMessageComponent extends Container {
 		}
 	}
 
-	setTranscriptIndent(indent: number): void {
-		if (this.toolIndent !== indent) {
-			this.toolIndent = indent;
+	setOutputPad(outputPad: number): void {
+		if (this.outputPad !== outputPad) {
+			this.outputPad = outputPad;
 			this.rebuild();
 		}
 	}
@@ -70,7 +81,7 @@ export class CustomMessageComponent extends Container {
 			try {
 				const component = this.customRenderer(
 					this.message,
-					{ expanded: this._expanded, outputPad: this.toolIndent },
+					{ expanded: this._expanded, outputPad: this.outputPad, keyText, keyHint },
 					theme,
 				);
 				if (component) {
@@ -87,6 +98,7 @@ export class CustomMessageComponent extends Container {
 		// Default rendering uses our box
 		this.addChild(this.box);
 		this.box.clear();
+		this.box.setPaddingX(this.outputPad);
 
 		// Default rendering: label + content
 		const label = theme.fg("customMessageLabel", `\x1b[1m[${this.message.customType}]\x1b[22m`);
@@ -105,9 +117,22 @@ export class CustomMessageComponent extends Container {
 		}
 
 		this.box.addChild(
-			new Markdown(text, 0, 0, this.markdownTheme, {
-				color: (text: string) => theme.fg("customMessageText", text),
-			}),
+			new Markdown(
+				text,
+				0,
+				0,
+				this.markdownTheme,
+				{ color: (text: string) => theme.fg("customMessageText", text) },
+				{
+					transform: createMarkdownTransform(
+						"custom",
+						() => false,
+						this.markdownTransformers,
+						this.messageId,
+						this.timestamp,
+					),
+				},
+			),
 		);
 	}
 }
