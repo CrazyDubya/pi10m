@@ -1,225 +1,156 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { AuthStorage } from "../src/core/auth-storage.ts";
-import { getPiDevBaseUrl, PI_DEV_SESSION_SHARE_SCOPE } from "../src/core/pi-dev/config.ts";
-import { getPiDevAuth } from "../src/core/pi-dev/oauth.ts";
-import {
-	formatPiDevShareSuccess,
-	getPiDevShareAuth,
-	loginPiDevShare,
-	parseShareCommand,
-	uploadPiDevSessionShare,
-} from "../src/core/pi-dev/session-share.ts";
+import { EventEmitter } from "node:events";
+import { readFileSync, writeFileSync } from "node:fs";
+import { PassThrough } from "node:stream";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const tempDirs: string[] = [];
+const childProcessMocks = vi.hoisted(() => ({
+	spawn: vi.fn(),
+	spawnSync: vi.fn(() => ({ status: 0 })),
+}));
 
-function createTempDir(): string {
-	const dir = mkdtempSync(join(tmpdir(), "pi-session-share-"));
-	tempDirs.push(dir);
-	return dir;
+vi.mock("node:child_process", () => childProcessMocks);
+
+import { shareSession } from "../src/modes/interactive/session-share.ts";
+import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+	let resolve!: () => void;
+	const promise = new Promise<void>((done) => {
+		resolve = done;
+	});
+	return { promise, resolve };
 }
 
-afterEach(() => {
-	vi.unstubAllEnvs();
-	vi.unstubAllGlobals();
-	for (const dir of tempDirs.splice(0)) {
-		rmSync(dir, { recursive: true, force: true });
-	}
-});
+describe("shareSession", () => {
+	beforeAll(() => initTheme("dark"));
+	beforeEach(() => vi.clearAllMocks());
 
-describe("session share client", () => {
-	it("parses share modes", () => {
-		expect(parseShareCommand("/share")).toEqual({ ok: true, mode: "auto" });
-		expect(parseShareCommand("/share pi.dev")).toEqual({ ok: true, mode: "pi.dev" });
-		expect(parseShareCommand("/share github")).toEqual({ ok: true, mode: "github" });
-		expect(parseShareCommand("/share nope")).toEqual({ ok: false, message: "Usage: /share [pi.dev|github]" });
-	});
-
-	it("treats missing pi.dev auth as unavailable", async () => {
-		const authStorage = AuthStorage.inMemory();
-		await expect(getPiDevShareAuth(authStorage)).resolves.toEqual({ available: false, reason: "unauthenticated" });
-	});
-
-	it("treats pi.dev auth without session_share scope as unavailable", async () => {
-		const authStorage = AuthStorage.inMemory({
-			"pi.dev": {
-				type: "oauth",
-				access: "piga_old",
-				refresh: "pigr_old",
-				expires: Date.now() + 60_000,
-				scope: "offline_access",
-			},
-		});
-
-		await expect(getPiDevShareAuth(authStorage)).resolves.toEqual({ available: false, reason: "missing_scope" });
-	});
-
-	it("accepts pi.dev auth with session_share scope", async () => {
-		const authStorage = AuthStorage.inMemory({
-			"pi.dev": {
-				type: "oauth",
-				access: "piga_share",
-				refresh: "pigr_share",
-				expires: Date.now() + 60_000,
-				scope: "session_share offline_access",
-			},
-		});
-
-		await expect(getPiDevShareAuth(authStorage)).resolves.toEqual({ available: true, accessToken: "piga_share" });
-	});
-
-	it("refreshes expired pi.dev share tokens without a pi-ai OAuth provider", async () => {
-		vi.stubEnv("PI_DEV_URL", "http://127.0.0.1:8787/");
-		const authStorage = AuthStorage.inMemory({
-			"pi.dev": {
-				type: "oauth",
-				access: "piga_old",
-				refresh: "pigr_old",
-				expires: Date.now() - 1,
-				scope: "session_share offline_access",
-			},
-		});
-		const fetchMock = vi.fn(async (_input: string | URL, init?: RequestInit) => {
-			if (!(init?.body instanceof URLSearchParams)) {
-				throw new Error("Expected form body");
-			}
-			expect(init.body.get("grant_type")).toBe("refresh_token");
-			expect(init.body.get("client_id")).toBe("pi-coding-agent");
-			expect(init.body.get("refresh_token")).toBe("pigr_old");
-			return Response.json({
-				access_token: "piga_new",
-				refresh_token: "pigr_new",
-				expires_in: 86400,
-				scope: "session_share offline_access",
+	it("keeps concurrent session exports isolated", async () => {
+		const uploads: string[] = [];
+		childProcessMocks.spawn.mockImplementation((_command, args: string[]) => {
+			uploads.push(readFileSync(args.at(-1)!, "utf8"));
+			const child = Object.assign(new EventEmitter(), {
+				stdout: new PassThrough(),
+				stderr: new PassThrough(),
+				kill: vi.fn(),
 			});
-		});
-		vi.stubGlobal("fetch", fetchMock);
-
-		await expect(getPiDevShareAuth(authStorage)).resolves.toEqual({ available: true, accessToken: "piga_new" });
-		expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/api/oauth/token", expect.any(Object));
-		expect(await authStorage.read("pi.dev")).toMatchObject({ access: "piga_new", refresh: "pigr_new" });
-	});
-
-	it("serializes expired pi.dev token refreshes across auth storage instances", async () => {
-		vi.stubEnv("PI_DEV_URL", "http://127.0.0.1:8787/");
-		const authPath = join(createTempDir(), "auth.json");
-		const firstAuthStorage = AuthStorage.create(authPath);
-		await firstAuthStorage.modify("pi.dev", async () => ({
-			type: "oauth",
-			access: "piga_old",
-			refresh: "pigr_old",
-			expires: Date.now() - 1,
-			scope: "session_share offline_access",
-		}));
-		const secondAuthStorage = AuthStorage.create(authPath);
-		let refreshCalls = 0;
-		const fetchMock: typeof fetch = async () => {
-			const call = ++refreshCalls;
-			if (call === 1) {
-				await new Promise((resolve) => setTimeout(resolve, 25));
-			}
-			return Response.json({
-				access_token: `piga_new_${call}`,
-				refresh_token: `pigr_new_${call}`,
-				expires_in: 86400,
-				scope: "session_share offline_access",
+			queueMicrotask(() => {
+				child.stdout.end(`https://gist.github.com/test/${uploads.length}\n`);
+				child.stderr.end();
+				child.emit("close", 0);
 			});
-		};
+			return child;
+		});
 
-		const [first, second] = await Promise.all([
-			getPiDevAuth(firstAuthStorage, [PI_DEV_SESSION_SHARE_SCOPE], { fetch: fetchMock }),
-			getPiDevAuth(secondAuthStorage, [PI_DEV_SESSION_SHARE_SCOPE], { fetch: fetchMock }),
+		const aWritten = deferred();
+		const bWritten = deferred();
+		const releaseB = deferred();
+		const errors: string[] = [];
+		const context = (name: "A" | "B") => ({
+			session: {
+				sessionManager: {
+					getSessionId: () => name,
+					getCwd: () => "/tmp",
+					getBranch: () => [],
+				},
+				state: { systemPrompt: name, tools: [] },
+				settingsManager: { getSessionShareDestination: () => "auto" },
+				modelRuntime: { getProvider: () => undefined },
+				exportToHtml: async (filePath: string) => {
+					writeFileSync(filePath, name);
+					if (name === "A") {
+						aWritten.resolve();
+						await bWritten.promise;
+					} else {
+						bWritten.resolve();
+						await releaseB.promise;
+					}
+				},
+			},
+			ui: { setFocus() {}, requestRender() {} },
+			editorContainer: { clear() {}, addChild() {} },
+			editor: {},
+			showStatus() {},
+			showError(message: string) {
+				errors.push(message);
+			},
+		});
+
+		const shareA = shareSession(context("A") as never);
+		await aWritten.promise;
+		const shareB = shareSession(context("B") as never);
+		await bWritten.promise;
+		await shareA;
+		releaseB.resolve();
+		await shareB;
+
+		expect(uploads).toEqual(["A", "B"]);
+		expect(errors).toEqual([]);
+	});
+
+	// #10870: users need persistent gist shares even when Radius authentication is configured.
+	it("forces gist sharing without checking Radius authentication", async () => {
+		const getProvider = vi.fn(() => ({ id: "radius" }));
+		childProcessMocks.spawn.mockImplementation((_command, args: string[]) => {
+			const child = Object.assign(new EventEmitter(), {
+				stdout: new PassThrough(),
+				stderr: new PassThrough(),
+				kill: vi.fn(),
+			});
+			queueMicrotask(() => {
+				child.stdout.end("https://gist.github.com/test/forced-gist\n");
+				child.stderr.end();
+				child.emit("close", 0);
+			});
+			expect(readFileSync(args.at(-1)!, "utf8")).toBe("html");
+			return child;
+		});
+		const statuses: string[] = [];
+
+		await shareSession({
+			session: {
+				sessionManager: { getSessionId: () => "gist", getCwd: () => "/tmp", getBranch: () => [] },
+				state: { systemPrompt: "", tools: [] },
+				settingsManager: { getSessionShareDestination: () => "gist" },
+				modelRuntime: { getProvider },
+				exportToHtml: async (filePath: string) => writeFileSync(filePath, "html"),
+			},
+			ui: { setFocus() {}, requestRender() {} },
+			editorContainer: { clear() {}, addChild() {} },
+			editor: {},
+			showStatus: (message: string) => statuses.push(message),
+			showError: vi.fn(),
+		} as never);
+
+		expect(getProvider).not.toHaveBeenCalled();
+		expect(childProcessMocks.spawn).toHaveBeenCalledWith("gh", [
+			"gist",
+			"create",
+			"--public=false",
+			expect.any(String),
 		]);
-
-		expect(first).toEqual({ available: true, accessToken: "piga_new_1" });
-		expect(second).toEqual({ available: true, accessToken: "piga_new_1" });
-		expect(refreshCalls).toBe(1);
+		expect(statuses[0]).toContain("https://pi.dev/session/#forced-gist");
 	});
 
-	it("runs pi.dev share device auth without a pi-ai OAuth provider", async () => {
-		vi.stubEnv("PI_DEV_URL", "http://127.0.0.1:8787/");
-		const authStorage = AuthStorage.inMemory();
-		const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
-			if (!(init?.body instanceof URLSearchParams)) {
-				throw new Error("Expected form body");
-			}
-			if (input === "http://127.0.0.1:8787/api/oauth/device") {
-				expect(init.body.get("client_id")).toBe("pi-coding-agent");
-				expect(init.body.get("scope")).toBe("session_share offline_access");
-				return Response.json({
-					device_code: "pigd_123",
-					user_code: "ABCD-EFGH",
-					verification_uri: "http://127.0.0.1:8787/pair",
-					verification_uri_complete: "http://127.0.0.1:8787/pair?code=ABCD-EFGH",
-					expires_in: 300,
-					interval: 1,
-				});
-			}
-			if (input === "http://127.0.0.1:8787/api/oauth/token") {
-				expect(init.body.get("grant_type")).toBe("urn:ietf:params:oauth:grant-type:device_code");
-				expect(init.body.get("client_id")).toBe("pi-coding-agent");
-				expect(init.body.get("device_code")).toBe("pigd_123");
-				return Response.json({
-					access_token: "piga_new",
-					refresh_token: "pigr_new",
-					expires_in: 86400,
-					scope: "session_share offline_access",
-				});
-			}
-			throw new Error(`Unexpected fetch URL: ${String(input)}`);
-		});
-		vi.stubGlobal("fetch", fetchMock);
-		const deviceCodes: Array<{ userCode: string; verificationUri: string }> = [];
+	it("reports missing Radius authentication when Radius is forced", async () => {
+		const errors: string[] = [];
 
-		const credential = await loginPiDevShare(authStorage, {
-			onDeviceCode: (info) => deviceCodes.push({ userCode: info.userCode, verificationUri: info.verificationUri }),
-		});
+		await shareSession({
+			session: {
+				sessionManager: { getSessionId: () => "radius", getCwd: () => "/tmp", getBranch: () => [] },
+				state: { systemPrompt: "", tools: [] },
+				settingsManager: { getSessionShareDestination: () => "radius" },
+				modelRuntime: { getProvider: () => undefined },
+			},
+			ui: { setFocus() {}, requestRender() {} },
+			editorContainer: { clear() {}, addChild() {} },
+			editor: {},
+			showStatus: vi.fn(),
+			showError: (message: string) => errors.push(message),
+		} as never);
 
-		expect(credential.access).toBe("piga_new");
-		expect(await authStorage.read("pi.dev")).toMatchObject({ access: "piga_new", refresh: "pigr_new" });
-		expect(deviceCodes).toEqual([
-			{ userCode: "ABCD-EFGH", verificationUri: "http://127.0.0.1:8787/pair?code=ABCD-EFGH" },
-		]);
-	});
-
-	it("uploads HTML to the pi.dev share endpoint", async () => {
-		const bytes = Buffer.from("<html>ok</html>");
-		const calls: Array<Parameters<typeof fetch>> = [];
-		const fetchFn: typeof fetch = async (input, init) => {
-			calls.push([input, init]);
-			return Response.json({ ok: true, id: "psh_123", url: "https://pi.dev/session/#pi/psh_123" }, { status: 201 });
-		};
-
-		const result = await uploadPiDevSessionShare({
-			accessToken: "piga_share",
-			bytes,
-			byteSize: bytes.byteLength,
-			fetch: fetchFn,
-		});
-
-		expect(result).toEqual({ id: "psh_123", url: "https://pi.dev/session/#pi/psh_123" });
-		expect(calls).toHaveLength(1);
-		const [url, init] = calls[0]!;
-		expect(url).toBe("https://pi.dev/api/session-shares");
-		expect(init?.method).toBe("POST");
-		expect(init?.headers).toEqual({
-			Authorization: "Bearer piga_share",
-			"Content-Type": "text/html; charset=utf-8",
-			"Content-Length": String(bytes.byteLength),
-		});
-		expect(init?.body).toBe(bytes);
-	});
-
-	it("uses PI_DEV_URL for pi.dev API base URL", () => {
-		vi.stubEnv("PI_DEV_URL", "http://127.0.0.1:8787/");
-		expect(getPiDevBaseUrl()).toBe("http://127.0.0.1:8787");
-	});
-
-	it("formats successful pi.dev share output with unlisted warning", () => {
-		expect(formatPiDevShareSuccess("https://pi.dev/session/#pi/psh_123")).toBe(
-			"Share URL: https://pi.dev/session/#pi/psh_123\nStored on pi.dev as an unlisted session share.\nAnyone with this link can view it.",
-		);
+		expect(errors).toEqual(["Radius authentication is not configured. Run '/login radius' first."]);
+		expect(childProcessMocks.spawnSync).not.toHaveBeenCalled();
+		expect(childProcessMocks.spawn).not.toHaveBeenCalled();
 	});
 });

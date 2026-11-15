@@ -1,190 +1,205 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { TUI } from "@earendil-works/pi-tui";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ENV_AGENT_DIR } from "../src/config.ts";
-import type { SettingsManager } from "../src/core/settings-manager.ts";
+import type { TerminalColors, TUI } from "@earendil-works/pi-tui";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { SettingsManager } from "../src/core/settings-manager.ts";
 import {
 	initTheme,
-	setRegisteredThemes,
+	setTerminalColorScheme,
+	setTerminalColors,
 	type TerminalTheme,
-	type Theme,
 	theme,
 } from "../src/modes/interactive/theme/theme.ts";
 import { InteractiveThemeController } from "../src/modes/interactive/theme/theme-controller.ts";
 
-function createUi(): {
-	ui: TUI;
-	queryTerminalBackgroundColor: ReturnType<typeof vi.fn>;
-	queryTerminalColorScheme: ReturnType<typeof vi.fn>;
-	setTerminalColorSchemeNotifications: ReturnType<typeof vi.fn>;
-	emitTerminalColorScheme: (terminalTheme: TerminalTheme) => void;
-} {
-	const queryTerminalBackgroundColor = vi.fn();
-	const queryTerminalColorScheme = vi.fn();
+const DARK: TerminalColors = { foreground: { r: 248, g: 248, b: 242 }, background: { r: 40, g: 42, b: 54 } };
+const LIGHT: TerminalColors = { foreground: { r: 30, g: 30, b: 30 }, background: { r: 250, g: 250, b: 250 } };
+
+type ColorQueryOptions = { timeoutMs: number; onLateReply?: (colors: TerminalColors) => void };
+
+function createUi() {
+	const queryTerminalColors = vi.fn(async (_options: ColorQueryOptions): Promise<TerminalColors> => ({}));
 	const setTerminalColorSchemeNotifications = vi.fn();
 	let terminalColorSchemeListener: ((terminalTheme: TerminalTheme) => void) | undefined;
+	const unsubscribeTerminalColorScheme = vi.fn();
 	const ui = {
 		invalidate: vi.fn(),
 		requestRender: vi.fn(),
 		setTerminalColorSchemeNotifications,
 		onTerminalColorSchemeChange: vi.fn((listener: (terminalTheme: TerminalTheme) => void) => {
 			terminalColorSchemeListener = listener;
-			return vi.fn();
+			return unsubscribeTerminalColorScheme;
 		}),
-		queryTerminalBackgroundColor,
-		queryTerminalColorScheme,
+		queryTerminalColors,
 	} as unknown as TUI;
 	return {
 		ui,
-		queryTerminalBackgroundColor,
-		queryTerminalColorScheme,
+		queryTerminalColors,
 		setTerminalColorSchemeNotifications,
-		emitTerminalColorScheme: (terminalTheme) => terminalColorSchemeListener?.(terminalTheme),
+		unsubscribeTerminalColorScheme,
+		emitTerminalColorScheme: (terminalTheme: TerminalTheme) => terminalColorSchemeListener?.(terminalTheme),
 	};
 }
 
-function createSettingsManager(themeSetting: string | undefined): {
-	settingsManager: SettingsManager;
-	setTheme: ReturnType<typeof vi.fn>;
-	flush: ReturnType<typeof vi.fn>;
-} {
-	const setTheme = vi.fn();
-	const flush = vi.fn(async () => {});
-	const settingsManager = {
-		getThemeSetting: vi.fn(() => themeSetting),
-		setTheme,
-		flush,
-	} as unknown as SettingsManager;
-	return { settingsManager, setTheme, flush };
+function createController(ui: TUI, getSettingsManager: () => SettingsManager, initialThemeSetting?: string) {
+	return new InteractiveThemeController(ui, {
+		getSettingsManager,
+		showError: vi.fn(),
+		onChanged: vi.fn(),
+		initialThemeSetting,
+	});
 }
 
-let tempDir: string;
-
-beforeEach(() => {
-	tempDir = mkdtempSync(join(tmpdir(), "pi-theme-controller-"));
-	vi.stubEnv(ENV_AGENT_DIR, tempDir);
-});
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 afterEach(() => {
-	setRegisteredThemes([]);
+	setTerminalColors({});
+	setTerminalColorScheme(undefined);
 	initTheme("dark");
 	vi.unstubAllEnvs();
-	rmSync(tempDir, { recursive: true, force: true });
 });
 
 describe("InteractiveThemeController", () => {
-	it("starts with the paired override matching the terminal environment", () => {
-		vi.stubEnv("COLORFGBG", "15;0");
-		setRegisteredThemes([{ name: "dayowl" }, { name: "nightowl" }] as Theme[]);
-		const { ui } = createUi();
-		const { settingsManager } = createSettingsManager("light/dark");
-		const controller = new InteractiveThemeController(ui, settingsManager, {
-			showError: vi.fn(),
-			onChanged: vi.fn(),
-			themeOverride: "dayowl/nightowl",
-		});
+	it("uses the initial theme without persisting it", async () => {
+		const { ui, queryTerminalColors } = createUi();
+		const manager = SettingsManager.inMemory({ theme: "dark" });
+		const setTheme = vi.spyOn(manager, "setTheme");
+		const flushSettings = vi.spyOn(manager, "flush");
+		const controller = createController(ui, () => manager, "light");
 
-		expect(controller.getTerminalTheme()).toBe("dark");
-		expect(theme.name).toBe("nightowl");
+		expect(theme.name).toBe("light");
+		expect(controller.getThemeSelection()).toBe("light");
+		controller.applyFromSettings();
+		await flush();
+
+		expect(queryTerminalColors).toHaveBeenCalledOnce();
+		expect(setTheme).not.toHaveBeenCalled();
+		expect(flushSettings).not.toHaveBeenCalled();
 	});
 
-	it("keeps the paired override when settings are reloaded", async () => {
-		setRegisteredThemes([{ name: "dayowl" }, { name: "nightowl" }] as Theme[]);
-		const { ui, queryTerminalColorScheme, setTerminalColorSchemeNotifications } = createUi();
-		queryTerminalColorScheme.mockResolvedValue("light");
-		const { settingsManager, setTheme: setPersistedTheme, flush } = createSettingsManager("light/dark");
-		const controller = new InteractiveThemeController(ui, settingsManager, {
-			showError: vi.fn(),
-			onChanged: vi.fn(),
-			themeOverride: "dayowl/nightowl",
+	it("applies the theme immediately and lets startup wait for the colors", async () => {
+		const { ui, queryTerminalColors } = createUi();
+		let answer: (colors: TerminalColors) => void = () => {};
+		queryTerminalColors.mockReturnValue(
+			new Promise((resolve) => {
+				answer = resolve;
+			}),
+		);
+		const controller = createController(ui, () => SettingsManager.inMemory());
+		controller.applyFromSettings();
+
+		// Grayscale until the terminal answers.
+		expect(theme.name).toBe("system");
+		expect(theme.getFgAnsi("error")).toBe("\x1b[39m");
+
+		answer(DARK);
+		await controller.waitForTerminalColors();
+		expect(theme.getFgAnsi("error")).toMatch(/^\x1b\[38;/);
+	});
+
+	it("falls back to palette indices, then applies colors that arrive after the timeout", async () => {
+		const { ui, queryTerminalColors } = createUi();
+		let lateReply: (colors: TerminalColors) => void = () => {};
+		queryTerminalColors.mockImplementation(async (options) => {
+			lateReply = options.onLateReply!;
+			return {};
 		});
+		const controller = createController(ui, () => SettingsManager.inMemory());
+		controller.applyFromSettings();
+		await flush();
+		expect(theme.getFgAnsi("error")).toBe("\x1b[38;5;1m");
 
-		await controller.applyFromSettings();
-		expect(theme.name).toBe("dayowl");
+		lateReply(DARK);
+		expect(theme.colors.error.kind).toBe("rgb");
+	});
 
-		await controller.applyFromSettings();
-		expect(theme.name).toBe("dayowl");
-		expect(queryTerminalColorScheme).toHaveBeenCalledTimes(2);
+	it("re-queries the colors on appearance changes and lets them decide", async () => {
+		const { ui, queryTerminalColors, setTerminalColorSchemeNotifications, emitTerminalColorScheme } = createUi();
+		queryTerminalColors.mockResolvedValue(LIGHT);
+		const controller = createController(ui, () => SettingsManager.inMemory(), "light/dark");
+		controller.applyFromSettings();
 		expect(setTerminalColorSchemeNotifications).toHaveBeenCalledWith(true);
-		expect(setPersistedTheme).not.toHaveBeenCalled();
-		expect(flush).not.toHaveBeenCalled();
+		await flush();
+		expect(theme.name).toBe("light");
+
+		queryTerminalColors.mockResolvedValue(DARK);
+		// The report says light, but the terminal renders dark.
+		emitTerminalColorScheme("light");
+		await flush();
+		expect(theme.name).toBe("dark");
 	});
 
-	it("switches the paired override when terminal appearance changes", async () => {
-		setRegisteredThemes([{ name: "dayowl" }, { name: "nightowl" }] as Theme[]);
-		const { ui, queryTerminalColorScheme, emitTerminalColorScheme } = createUi();
-		queryTerminalColorScheme.mockResolvedValue("light");
-		const { settingsManager } = createSettingsManager("light/dark");
-		const controller = new InteractiveThemeController(ui, settingsManager, {
-			showError: vi.fn(),
-			onChanged: vi.fn(),
-			themeOverride: "dayowl/nightowl",
-		});
+	it("uses the reported scheme for the system theme when the terminal reports no colors", async () => {
+		vi.stubEnv("COLORFGBG", "");
+		const { ui, emitTerminalColorScheme } = createUi();
+		const controller = createController(ui, () => SettingsManager.inMemory());
+		controller.applyFromSettings();
+		await flush();
+		expect(theme.appearance).toBe("dark");
 
-		await controller.applyFromSettings();
-		expect(theme.name).toBe("dayowl");
-
-		emitTerminalColorScheme("dark");
-		expect(theme.name).toBe("nightowl");
+		emitTerminalColorScheme("light");
+		expect(theme.appearance).toBe("light");
+		expect(controller.getTerminalTheme()).toBe("light");
 	});
 
-	it("reports an unavailable single-theme override", async () => {
+	it("re-renders only when the reported colors change", async () => {
+		const { ui, queryTerminalColors } = createUi();
+		const controller = createController(ui, () => SettingsManager.inMemory({ theme: "dark" }));
+		const query = async (colors: TerminalColors) => {
+			queryTerminalColors.mockResolvedValue(colors);
+			controller.applyFromSettings();
+			await flush();
+		};
+
+		await query(DARK);
+		// A timeout keeps the known colors; erasing them would count as a change and re-render.
+		await query({});
+		await query(structuredClone(DARK));
+		expect(ui.requestRender).toHaveBeenCalledOnce();
+	});
+
+	it("disables terminal appearance updates when disposed", async () => {
+		const { ui, setTerminalColorSchemeNotifications, unsubscribeTerminalColorScheme } = createUi();
+		const controller = createController(ui, () => SettingsManager.inMemory({ theme: "light/dark" }));
+		controller.applyFromSettings();
+		await flush();
+
+		controller.dispose();
+
+		expect(setTerminalColorSchemeNotifications).toHaveBeenLastCalledWith(false);
+		expect(unsubscribeTerminalColorScheme).toHaveBeenCalledOnce();
+	});
+
+	it("lets an explicit selection replace the initial theme", async () => {
 		const { ui } = createUi();
-		const { settingsManager } = createSettingsManager("light/dark");
-		const showError = vi.fn();
-		const controller = new InteractiveThemeController(ui, settingsManager, {
-			showError,
-			onChanged: vi.fn(),
-			themeOverride: "missing",
-		});
+		const firstManager = SettingsManager.inMemory({ theme: "dark" });
+		const secondManager = SettingsManager.inMemory({ theme: "light" });
+		let manager = firstManager;
+		const controller = createController(ui, () => manager, "light");
+		controller.applyFromSettings();
 
-		await controller.applyFromSettings();
+		expect(controller.setThemeName("dark")).toEqual({ success: true });
+		manager = secondManager;
+		controller.applyFromSettings();
+		await flush();
 
+		expect(controller.getThemeSelection()).toBe("dark");
 		expect(theme.name).toBe("dark");
-		expect(showError).toHaveBeenCalledOnce();
-		expect(showError.mock.calls[0][0]).toContain('Failed to load theme "missing"');
-		expect(showError.mock.calls[0][0]).toContain("Fell back to dark theme.");
 	});
 
-	it("validates only the active side of a paired override", async () => {
-		setRegisteredThemes([{ name: "nightowl" }] as Theme[]);
-		const { ui, queryTerminalColorScheme } = createUi();
-		queryTerminalColorScheme.mockResolvedValueOnce("light").mockResolvedValueOnce("dark");
-		const { settingsManager } = createSettingsManager("light/dark");
-		const showError = vi.fn();
-		const controller = new InteractiveThemeController(ui, settingsManager, {
-			showError,
-			onChanged: vi.fn(),
-			themeOverride: "missing/nightowl",
-		});
+	it("reloads theme settings when no initial theme was supplied", async () => {
+		const { ui } = createUi();
+		const firstManager = SettingsManager.inMemory({ theme: "dark" });
+		const secondManager = SettingsManager.inMemory({ theme: "light" });
+		let manager = firstManager;
+		const controller = createController(ui, () => manager);
+		controller.applyFromSettings();
 
-		await controller.applyFromSettings();
+		firstManager.applyOverrides({ theme: "light" });
+		controller.applyFromSettings();
+		expect(theme.name).toBe("light");
+
+		secondManager.applyOverrides({ theme: "dark" });
+		manager = secondManager;
+		controller.applyFromSettings();
 		expect(theme.name).toBe("dark");
-		expect(showError).toHaveBeenCalledOnce();
-
-		await controller.applyFromSettings();
-		expect(theme.name).toBe("nightowl");
-		expect(showError).toHaveBeenCalledOnce();
-	});
-
-	it("prefers a single-theme override over settings", async () => {
-		setRegisteredThemes([{ name: "nightowl" }] as Theme[]);
-		const { ui, queryTerminalBackgroundColor } = createUi();
-		const { settingsManager, setTheme: setPersistedTheme, flush } = createSettingsManager("light/dark");
-		const controller = new InteractiveThemeController(ui, settingsManager, {
-			showError: vi.fn(),
-			onChanged: vi.fn(),
-			themeOverride: "nightowl",
-		});
-
-		expect(theme.name).toBe("nightowl");
-		await controller.applyFromSettings();
-
-		expect(theme.name).toBe("nightowl");
-		expect(queryTerminalBackgroundColor).not.toHaveBeenCalled();
-		expect(setPersistedTheme).not.toHaveBeenCalled();
-		expect(flush).not.toHaveBeenCalled();
 	});
 });

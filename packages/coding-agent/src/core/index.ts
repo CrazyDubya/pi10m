@@ -3,15 +3,6 @@
  */
 
 export {
-	type ActivitySyncResult,
-	type ActivitySyncStatus,
-	getStableActivitySyncDeviceId,
-	loadActivitySyncState,
-	type SyncSessionAnalyticsOptions,
-	syncSessionAnalytics,
-} from "./activity-sync/index.ts";
-
-export {
 	AgentSession,
 	type AgentSessionConfig,
 	type AgentSessionEvent,
@@ -35,11 +26,15 @@ export {
 	createAgentSessionServices,
 } from "./agent-session-services.ts";
 export { type BashExecutorOptions, type BashResult, executeBashWithOperations } from "./bash-executor.ts";
+export type { CacheWarmingDecision, CacheWarmingStatus } from "./cache-warmer.ts";
 export type { CompactionResult } from "./compaction/index.ts";
 export { createEventBus, type EventBus, type EventBusController } from "./event-bus.ts";
 export { areExperimentalFeaturesEnabled } from "./experimental.ts";
 // Extensions system
 export {
+	type AgentActivityOutcome,
+	type AgentBeforeSettleEvent,
+	type AgentBeforeSettleEventResult,
 	type AgentEndEvent,
 	type AgentSettledEvent,
 	type AgentStartEvent,
@@ -47,8 +42,18 @@ export {
 	type AgentToolUpdateCallback,
 	type BeforeAgentStartEvent,
 	type BeforeAgentStartEventResult,
+	type BoundaryContextPreview,
+	type BoundaryResult,
+	type BoundaryState,
 	type BuildSystemPromptOptions,
+	type CacheWarmingDecisionEvent,
+	type CacheWarmingDecisionEventResult,
+	type CompactionEntryDraft,
+	type ContextEditEntryDraft,
 	type ContextEvent,
+	type ContextWithSystemEvent,
+	type CustomEntryDraft,
+	type CustomMessageEntryDraft,
 	defineTool,
 	discoverAndLoadExtensions,
 	type ExecOptions,
@@ -68,11 +73,13 @@ export {
 	type InlineExtension,
 	type LoadExtensionsResult,
 	type MessageRenderer,
+	type NormalizedBuildSystemPromptOptions,
 	type RegisteredCommand,
 	type SessionBeforeCompactEvent,
 	type SessionBeforeForkEvent,
 	type SessionBeforeSwitchEvent,
 	type SessionBeforeTreeEvent,
+	type SessionBoundaryDraft,
 	type SessionCompactEvent,
 	type SessionShutdownEvent,
 	type SessionStartEvent,
@@ -83,25 +90,8 @@ export {
 	type ToolRenderResultOptions,
 	type ToolResultEvent,
 	type TurnEndEvent,
+	type TurnEndEventResult,
 	type TurnStartEvent,
 	type WorkingIndicatorOptions,
 } from "./extensions/index.ts";
-export {
-	formatPiDevShareSuccess,
-	getPiDevAuth,
-	loginPiDev,
-	PI_DEV_PROFILE_CONNECTED_STATUS,
-	PI_DEV_PROFILE_SCOPES,
-	PI_DEV_SESSION_SHARE_SCOPE,
-	PI_DEV_SETUP_PROFILE_CONNECTED_STATUS,
-	type PiDevAuthResult,
-	type PiDevDeviceCodeInfo,
-	type PiDevLoginOptions,
-	type PiDevShareUploadOptions,
-	type PiDevShareUploadResult,
-	parseShareCommand,
-	type ShareCommandMode,
-	type ShareCommandParseResult,
-	uploadPiDevSessionShare,
-} from "./pi-dev/index.ts";
 export { createSyntheticSourceInfo } from "./source-info.ts";

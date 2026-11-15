@@ -1,14 +1,21 @@
 import type { ResponseStreamEvent } from "openai/resources/responses/responses.js";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import { appendGrammarToolInputJsonDelta } from "../src/api/constrained-sampling.ts";
+import {
+	appendGrammarToolInputJsonDelta,
+	closeGrammarToolInputJson,
+	makeStrictJsonSchema,
+	resolveJsonSchemaStrictSampling,
+} from "../src/api/constrained-sampling.ts";
 import {
 	convertResponsesMessages,
 	convertResponsesTools,
 	processResponsesStream,
 } from "../src/api/openai-responses-shared.ts";
-import type { AssistantMessage, Context, Model, Tool, ToolCall } from "../src/types.ts";
+import type { AssistantMessage, Model, Tool, ToolCall } from "../src/types.ts";
 import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
+import { normalizeContext } from "../src/utils/transcript.ts";
+import { allocatedBytes } from "./memory-helpers.ts";
 
 function makeModel(): Model<"openai-responses"> {
 	return {
@@ -62,16 +69,23 @@ function makeTool(overrides: Partial<Tool> = {}): Tool {
 	};
 }
 
-function captureToolCallDeltas(stream: AssistantMessageEventStream): string[] {
+function captureToolCallEvents(stream: AssistantMessageEventStream): {
+	starts: ToolCall["arguments"][];
+	deltas: string[];
+} {
+	const starts: ToolCall["arguments"][] = [];
 	const deltas: string[] = [];
 	const originalPush = stream.push.bind(stream);
 	stream.push = (event) => {
-		if (event.type === "toolcall_delta") {
+		if (event.type === "toolcall_start") {
+			const block = event.partial.content[event.contentIndex];
+			if (block?.type === "toolCall") starts.push(structuredClone(block.arguments));
+		} else if (event.type === "toolcall_delta") {
 			deltas.push(event.delta);
 		}
 		originalPush(event);
 	};
-	return deltas;
+	return { starts, deltas };
 }
 
 describe("constrained tool sampling", () => {
@@ -114,6 +128,78 @@ describe("constrained tool sampling", () => {
 		);
 	});
 
+	it("derives strict provider schemas without changing tool definitions", () => {
+		const parameters = Type.Object({
+			path: Type.String(),
+			offset: Type.Optional(Type.Number()),
+			metadata: Type.Object({ enabled: Type.Optional(Type.Boolean()) }),
+			nullable: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+		});
+
+		const strict = makeStrictJsonSchema(parameters);
+
+		expect(parameters).not.toHaveProperty("additionalProperties");
+		expect(parameters.required).toEqual(["path", "metadata"]);
+		expect(strict).toMatchObject({
+			additionalProperties: false,
+			required: ["path", "offset", "metadata", "nullable"],
+			properties: {
+				offset: { anyOf: [{ type: "number" }, { type: "null" }] },
+				metadata: {
+					additionalProperties: false,
+					required: ["enabled"],
+					properties: { enabled: { anyOf: [{ type: "boolean" }, { type: "null" }] } },
+				},
+				nullable: { anyOf: [{ type: "string" }, { type: "null" }] },
+			},
+		});
+	});
+
+	it("falls back or rejects schemas that cannot be safely converted", () => {
+		const cases: Array<{ parameters: Tool["parameters"]; error: string }> = [
+			{
+				parameters: Type.Object({ metadata: Type.Object({}, { additionalProperties: Type.String() }) }),
+				error: "additionalProperties is unsupported",
+			},
+			{
+				parameters: Type.Intersect([Type.Object({ a: Type.String() }), Type.Object({ b: Type.Number() })]),
+				error: "allOf schemas are unsupported",
+			},
+			{
+				parameters: Type.Object({
+					value: Type.Union([Type.Object({ nested: Type.String() }), Type.Null()]),
+				}),
+				error: "object and array unions are unsupported",
+			},
+			{
+				parameters: {
+					type: "object",
+					properties: { child: { $ref: "https://example.com/child.json" } },
+					required: ["child"],
+				} as Tool["parameters"],
+				error: "$ref schemas are unsupported",
+			},
+		];
+
+		for (const { parameters, error } of cases) {
+			const tool: Tool = {
+				...makeTool(),
+				parameters,
+				constrainedSampling: { type: "json_schema", strict: "prefer" },
+			};
+
+			expect(() => makeStrictJsonSchema(parameters)).toThrow(error);
+			expect(resolveJsonSchemaStrictSampling(tool, true)).toBeUndefined();
+			expect(convertResponsesTools([tool], { supportsStrictMode: true })[0]).toMatchObject({
+				strict: false,
+				parameters,
+			});
+
+			tool.constrainedSampling = { type: "json_schema", strict: "require" };
+			expect(() => resolveJsonSchemaStrictSampling(tool, true)).toThrow(error);
+		}
+	});
+
 	it("replays grammar calls as custom Responses items", () => {
 		const replayedToolCall: ToolCall = {
 			type: "toolCall",
@@ -121,7 +207,7 @@ describe("constrained tool sampling", () => {
 			name: "sample_tool",
 			arguments: { payload: "abc" },
 		};
-		const context: Context = {
+		const context = normalizeContext({
 			messages: [
 				{
 					role: "assistant",
@@ -142,8 +228,9 @@ describe("constrained tool sampling", () => {
 					timestamp: Date.now(),
 				},
 			],
-		};
-		for (const invalidArguments of [{}, { payload: 42 }]) {
+		});
+		const invalidArgumentsList: ToolCall["arguments"][] = [{}, { payload: 42 }];
+		for (const invalidArguments of invalidArgumentsList) {
 			replayedToolCall.arguments = invalidArguments;
 			expect(() =>
 				convertResponsesMessages(makeModel(), context, new Set(["openai"]), {
@@ -171,33 +258,134 @@ describe("constrained tool sampling", () => {
 		});
 	});
 
+	// earendil-works/radius#115: a gateway forwards another model's history as a foreign provider.
+	it("drops foreign item ids when replaying grammar calls as custom Responses items", () => {
+		const context = normalizeContext({
+			messages: [
+				{
+					role: "assistant",
+					api: "pi-messages",
+					provider: "radius",
+					model: "gpt-other",
+					content: [{ type: "toolCall", id: "call_1|ctc_1", name: "sample_tool", arguments: { payload: "abc" } }],
+					usage: makeUsage(),
+					stopReason: "toolUse",
+					timestamp: Date.now(),
+				},
+				{
+					role: "toolResult",
+					toolCallId: "call_1|ctc_1",
+					toolName: "sample_tool",
+					content: [{ type: "text", text: "done" }],
+					isError: false,
+					timestamp: Date.now(),
+				},
+			],
+		});
+
+		const messages = convertResponsesMessages(makeModel(), context, new Set(["openai"]), {
+			grammarToolInputProperties: new Map([["sample_tool", "payload"]]),
+		});
+
+		const call = messages.find((item) => "type" in item && item.type === "custom_tool_call");
+		expect(call).toMatchObject({ type: "custom_tool_call", call_id: "call_1", input: "abc" });
+		expect(call && "id" in call ? call.id : undefined).toBeUndefined();
+	});
+
 	it("keeps grammar input JSON deltas append-only", () => {
 		const buffer = { input: "", started: false, closed: false };
-		const first = appendGrammarToolInputJsonDelta(buffer, "payload", 'a"', false);
-		const second = appendGrammarToolInputJsonDelta(buffer, "payload", 'a"\nb', true);
+		const first = appendGrammarToolInputJsonDelta(buffer, "payload", 'a"');
+		const second = closeGrammarToolInputJson(buffer, "payload", 'a"\nb');
 
 		expect(JSON.parse(`${first}${second}`)).toEqual({ payload: 'a"\nb' });
-		expect(appendGrammarToolInputJsonDelta(buffer, "payload", 'a"\nb', true)).toBeUndefined();
-		expect(() => appendGrammarToolInputJsonDelta(buffer, "payload", "changed", true)).toThrow(
+		expect(closeGrammarToolInputJson(buffer, "payload", 'a"\nb')).toBeUndefined();
+		expect(() => closeGrammarToolInputJson(buffer, "payload", "changed")).toThrow(
+			'grammar tool input for property "payload" changed after it was closed',
+		);
+		expect(() => appendGrammarToolInputJsonDelta(buffer, "payload", "x")).toThrow(
 			'grammar tool input for property "payload" changed after it was closed',
 		);
 	});
 
-	it("streams custom Responses tool calls as string arguments", async () => {
+	it("rejects a final grammar input that does not continue the streamed input", () => {
+		const buffer = { input: "", started: false, closed: false };
+		appendGrammarToolInputJsonDelta(buffer, "payload", "abc");
+		expect(() => closeGrammarToolInputJson(buffer, "payload", "abd")).toThrow(
+			'grammar tool input for property "payload" changed non-monotonically',
+		);
+	});
+
+	// #9265
+	it("streams custom tool input in time and memory linear in its length", async () => {
+		const run = async (size: number) => {
+			const deltas = Array.from({ length: size / 32 }, (_, index) =>
+				`chunk ${index} "quoted" \\ \n`.padEnd(32, "x"),
+			);
+			const events = [
+				{
+					type: "response.output_item.added",
+					output_index: 0,
+					item: { type: "custom_tool_call", call_id: "call_1", id: "ctc_1", name: "sample_tool", input: "" },
+				},
+				...deltas.map((delta) => ({
+					type: "response.custom_tool_call_input.delta",
+					output_index: 0,
+					item_id: "ctc_1",
+					delta,
+				})),
+				{ type: "response.custom_tool_call_input.done", output_index: 0, item_id: "ctc_1", input: deltas.join("") },
+				{
+					type: "response.output_item.done",
+					output_index: 0,
+					item: {
+						type: "custom_tool_call",
+						call_id: "call_1",
+						id: "ctc_1",
+						name: "sample_tool",
+						input: deltas.join(""),
+					},
+				},
+				{
+					type: "response.completed",
+					response: { status: "completed", usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } },
+				},
+			] as ResponseStreamEvent[];
+			const output = makeOutput();
+			const stream = new AssistantMessageEventStream();
+			const jsonDeltas: string[] = [];
+			const bytes = await allocatedBytes(async () => {
+				const consumed = (async () => {
+					for await (const event of stream) if (event.type === "toolcall_delta") jsonDeltas.push(event.delta);
+				})();
+				await processResponsesStream(iterateEvents(events), output, stream, makeModel(), {
+					grammarToolInputProperties: new Map([["sample_tool", "payload"]]),
+				});
+				stream.end();
+				await consumed;
+			});
+			expect(JSON.parse(jsonDeltas.join(""))).toEqual({ payload: deltas.join("") });
+			return bytes;
+		};
+		const small = await run(25_600);
+		const large = await run(256_000);
+		expect(large / small).toBeLessThan(25);
+	});
+
+	it("starts custom Responses tool calls with their initial input", async () => {
 		const output = makeOutput();
 		const stream = new AssistantMessageEventStream();
-		const deltas = captureToolCallDeltas(stream);
+		const { starts, deltas } = captureToolCallEvents(stream);
 		const events = [
 			{
 				type: "response.output_item.added",
 				output_index: 0,
-				item: { type: "custom_tool_call", call_id: "call_1", id: "ctc_1", name: "sample_tool", input: "" },
+				item: { type: "custom_tool_call", call_id: "call_1", id: "ctc_1", name: "sample_tool", input: "a" },
 			},
 			{
 				type: "response.custom_tool_call_input.delta",
 				output_index: 0,
 				item_id: "ctc_1",
-				delta: "ab",
+				delta: "b",
 			},
 			{
 				type: "response.custom_tool_call_input.done",
@@ -221,6 +409,7 @@ describe("constrained tool sampling", () => {
 		});
 
 		expect(output.stopReason).toBe("toolUse");
+		expect(starts).toEqual([{ payload: "a" }]);
 		expect(output.content).toEqual([
 			{ type: "toolCall", id: "call_1|ctc_1", name: "sample_tool", arguments: { payload: "abc" } },
 		]);
