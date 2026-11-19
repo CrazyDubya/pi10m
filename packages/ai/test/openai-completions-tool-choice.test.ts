@@ -1403,7 +1403,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("sends max_tokens for OpenCode completions models", async () => {
-		const cases = [getModel("opencode-go", "kimi-k2.6")!, getModel("opencode", "grok-build-0.1")!] as const;
+		const cases = [getModel("opencode-go", "kimi-k2.6")!, getModel("opencode", "grok-4.7")!] as const;
 
 		for (const model of cases) {
 			let payload: unknown;
@@ -1456,8 +1456,8 @@ describe("openai-completions tool_choice", () => {
 		}
 	});
 
-	it("omits reasoning effort for OpenCode Grok Build", async () => {
-		const model = getModel("opencode", "grok-build-0.1")!;
+	it("omits reasoning effort for OpenCode Grok 4.7", async () => {
+		const model = getModel("opencode", "grok-4.7")!;
 		let payload: unknown;
 
 		await streamSimple(

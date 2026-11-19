@@ -902,10 +902,6 @@ function applyThinkingLevelMetadata(model: Model<any>): void {
 		// OpenCode Go exposes Kimi K2.6 thinking as on/off, not distinct effort tiers.
 		mergeThinkingLevelMap(model, { minimal: null, low: null, medium: null });
 	}
-	if (model.provider === "opencode" && model.id === "grok-build-0.1") {
-		// OpenCode Zen Grok Build reasons by default but rejects explicit reasoningEffort.
-		mergeThinkingLevelMap(model, { off: null, minimal: null, low: null, medium: null });
-	}
 	if (model.provider === "ant-ling" && model.reasoning) {
 		// Ring reasons by default. Only high/xhigh have documented explicit effort controls.
 		mergeThinkingLevelMap(model, ANT_LING_RING_THINKING_LEVEL_MAP);
@@ -1850,10 +1846,6 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					// null, undefined, or @ai-sdk/openai-compatible
 					api = "openai-completions";
 					baseUrl = `${variant.basePath}/v1`;
-				}
-
-				if (variant.provider === "opencode" && modelId === "grok-build-0.1") {
-					compat = { ...(compat ?? {}), supportsReasoningEffort: false };
 				}
 
 				if ((variant.provider === "opencode" || variant.provider === "opencode-go") && modelId === "kimi-k2.6") {

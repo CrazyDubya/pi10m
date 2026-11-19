@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Removed the OpenCode Grok Build 0.1 special cases ahead of the Grok Build 0.1 sunset on November 13, 2026, and updated the affected tests to Grok 4.7. The Grok Build-only thinking-level restriction (high-only) and `supportsReasoningEffort: false` override were not transferred to Grok 4.7: Grok 4.7 on OpenCode Zen supports low/medium/high/xhigh effort levels, and the override is inert for Responses-API models.
+
 ### Changed
 
 - Replaced the `http-proxy-agent` and `https-proxy-agent` dependencies with vendored `EnvHttpProxyAgent`/`EnvHttpsProxyAgent` (`packages/ai/src/utils/node-proxy-agent.ts`) and proxy env resolution (`packages/ai/src/utils/proxy-env.ts`); the Bedrock provider now uses the vendored agents. SOCKS and PAC proxy URLs fail explicitly.

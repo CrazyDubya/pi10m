@@ -121,10 +121,10 @@ describe("getSupportedThinkingLevels", () => {
 		expect(getSupportedThinkingLevels(model!)).toEqual(["low", "high", "max"]);
 	});
 
-	it("includes only high for OpenCode Grok Build", () => {
-		const model = getModel("opencode", "grok-build-0.1");
+	it("includes low through xhigh for OpenCode Grok 4.7", () => {
+		const model = getModel("opencode", "grok-4.7");
 		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).toEqual(["high"]);
+		expect(getSupportedThinkingLevels(model!)).toEqual(["low", "medium", "high", "xhigh"]);
 	});
 
 	it("includes only high/xhigh plus off for DeepSeek V4 Flash on OpenRouter", () => {
